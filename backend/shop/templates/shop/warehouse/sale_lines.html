@@ -1,0 +1,33 @@
+<table class="warehouse-table">
+  <thead>
+    <tr>
+      <th scope="col">Товар</th><th scope="col">Артикул</th><th scope="col">Количество</th><th scope="col">Цена, ₽</th><th scope="col">Сумма, ₽</th>
+      {% if not print_mode and not sale.closed_at %}<th scope="col">Действие</th>{% endif %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for line in lines %}
+    <tr>
+      <th scope="row">{{ line.name }}{% if line.subtitle %}<small>{{ line.subtitle }}</small>{% endif %}</th>
+      <td>{{ line.part }}</td><td>{{ line.quantity }}</td><td>{{ line.price }}</td><td>{{ line.total }}</td>
+      {% if not print_mode and not sale.closed_at %}
+        <td>
+          <form method="post" class="warehouse-inline">
+            {% csrf_token %}
+            <input type="hidden" name="line" value="{{ line.pk }}">
+            <input type="hidden" name="operation_id" value="{{ operation_id }}">
+            <button type="submit" name="action" value="undo">Вернуть 1 шт.</button>
+          </form>
+        </td>
+      {% endif %}
+    </tr>
+    {% empty %}
+    <tr><td colspan="{% if not print_mode and not sale.closed_at %}6{% else %}5{% endif %}">В заказе пока нет товаров.</td></tr>
+    {% endfor %}
+  </tbody>
+  {% if lines %}
+  <tfoot>
+    <tr><th scope="row" colspan="2">Итого</th><td>{{ units }} шт.</td><td></td><td><strong>{{ total }} ₽</strong></td>{% if not print_mode and not sale.closed_at %}<td></td>{% endif %}</tr>
+  </tfoot>
+  {% endif %}
+</table>

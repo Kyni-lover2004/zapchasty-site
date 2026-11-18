@@ -1,0 +1,67 @@
+{% extends "shop/warehouse/base.html" %}
+{% block content %}
+<p><a href="{% url 'warehouse_sales' %}">← К заказам</a></p>
+
+<section class="warehouse-panel">
+  <h2>Сводка за {{ day|date:"F Y" }}</h2>
+  <form method="get" class="warehouse-form">
+    {{ day_form.day.as_field_group }}
+    <button type="submit">Показать дату</button>
+  </form>
+  <div class="warehouse-scroll warehouse-post">
+    <table class="warehouse-table">
+      <thead><tr><th scope="col">День</th><th scope="col">Выручка, ₽</th><th scope="col">Расходы, ₽</th><th scope="col">Возвраты, ₽</th><th scope="col">Итого, ₽</th></tr></thead>
+      <tbody>
+        {% for row in days %}
+        <tr>
+          <th scope="row"><a href="?day={{ row.day|date:'Y-m-d' }}#report-day"{% if row.day == day %} aria-current="date"{% endif %}>{{ row.day|date:"d.m.Y" }}</a></th>
+          <td>{{ row.revenue|floatformat:"2g" }}</td>
+          <td>{{ row.expenses|floatformat:"2g" }}</td>
+          <td>{{ row.refunds|floatformat:"2g" }}</td>
+          <td{% if row.balance < 0 %} class="warehouse-negative"{% endif %}>{{ row.balance|floatformat:"2g" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="warehouse-panel" id="report-day">
+  <h2>Операции за {{ day|date:"d.m.Y" }}</h2>
+  {% include "shop/warehouse/money_totals.html" %}
+  <div class="warehouse-scroll">
+    <table class="warehouse-table">
+      <thead><tr><th scope="col">Время</th><th scope="col">Операция</th><th scope="col">Источник или назначение</th><th scope="col">Сумма, ₽</th></tr></thead>
+      <tbody>
+        {% for entry in entries %}
+        <tr>
+          <td>{{ entry.time|date:"H:i" }}</td>
+          {% if entry.sale %}
+            <td>Продажа</td>
+            <th scope="row"><a href="{% url 'warehouse_sale' entry.sale.pk %}">Заказ {{ entry.sale.number }}</a><small>Оплата: {{ entry.sale.get_payment_method_display|default:'не указана' }}</small></th>
+            <td>+{{ entry.amount|floatformat:"2g" }}</td>
+          {% elif entry.refund %}
+            <td>Возврат</td>
+            <th scope="row"><a href="{% url 'warehouse_returns' %}?order={{ entry.refund.sale.number }}">Заказ {{ entry.refund.sale.number }}</a><small>Оформил: {{ entry.refund.employee_name }}</small></th>
+            <td class="warehouse-negative">−{{ entry.amount|floatformat:"2g" }}</td>
+          {% else %}
+            <td>{{ entry.expense.get_category_display }}</td>
+            <th scope="row">{{ entry.expense.description }}<small>Записал: {{ entry.expense.employee_name }}</small></th>
+            <td class="warehouse-negative">−{{ entry.amount|floatformat:"2g" }}</td>
+          {% endif %}
+        </tr>
+        {% empty %}<tr><td colspan="4">За этот день нет операций.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="warehouse-panel" id="new-expense">
+  <h2>Добавить расход</h2>
+  <form method="post" action="?day={{ day|date:'Y-m-d' }}#new-expense" class="warehouse-form">
+    {% csrf_token %}
+    {{ expense_form.as_div }}
+    <button type="submit" class="warehouse-primary">Записать расход</button>
+  </form>
+</section>
+{% endblock %}

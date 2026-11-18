@@ -1,0 +1,28 @@
+{% extends "admin/index.html" %}
+
+{% block content_title %}
+<section class="z62-console-heading">
+  <h1>Управление магазином</h1>
+  <p>Каталог, приёмка и остатки</p>
+</section>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+  {% if perms.shop.operate_stock or perms.shop.view_product or perms.shop.change_product %}
+    <nav class="z62-shortcuts" aria-label="Быстрый доступ">
+      {% if perms.shop.operate_stock %}
+        <a href="{% url 'warehouse_receipts' %}"><strong>Приёмка товара</strong><small>Накладные и сверка по QR</small><span aria-hidden="true">→</span></a>
+        <a href="{% url 'warehouse_stock' %}"><strong>Учёт остатков</strong><small>Остатки и история движений</small><span aria-hidden="true">→</span></a>
+        <a href="{% url 'warehouse_sales' %}"><strong>Реализация</strong><small>Заказы и накладные</small><span aria-hidden="true">→</span></a>
+      {% endif %}
+      {% if perms.shop.view_product or perms.shop.change_product %}
+        <a href="{% url 'admin:shop_product_changelist' %}"><strong>Товары</strong><small>Карточки, фото и цены</small><span aria-hidden="true">→</span></a>
+      {% endif %}
+    </nav>
+  {% endif %}
+  {% if app_list or not perms.shop.operate_stock %}
+    {% include "admin/app_list.html" with show_changelinks=True %}
+  {% endif %}
+</div>
+{% endblock %}

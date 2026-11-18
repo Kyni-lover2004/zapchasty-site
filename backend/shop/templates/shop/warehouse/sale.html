@@ -1,0 +1,38 @@
+{% extends "shop/warehouse/base.html" %}
+{% block content %}
+<p class="warehouse-meta"><a href="{% url 'warehouse_sales' %}">← К заказам</a> · {{ sale.created_at|date:"d.m.Y H:i" }} · {% if sale.closed_at %}Завершён · Оплата: {{ sale.get_payment_method_display|default:'не указана' }}{% else %}Открыт{% endif %}</p>
+{% if not sale.closed_at %}
+<section class="warehouse-panel warehouse-scan">
+  <h2>Добавить товар</h2>
+  <form method="post" class="warehouse-form">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="scan">
+    <input type="hidden" name="operation_id" value="{{ operation_id }}">
+    <label>QR-код или артикул
+      <input name="code" type="text" required maxlength="100" size="30" autofocus autocomplete="off" placeholder="Отсканируйте этикетку">
+    </label>
+    <button type="submit" class="warehouse-primary">Добавить 1 шт.</button>
+  </form>
+  <p class="warehouse-hint">Один скан добавляет одну штуку в заказ и сразу уменьшает остаток.</p>
+</section>
+{% endif %}
+<section class="warehouse-panel">
+  <h2>Товары в заказе</h2>
+  <div class="warehouse-scroll">
+    {% include "shop/warehouse/sale_lines.html" %}
+  </div>
+  {% if lines %}
+    <div class="warehouse-form warehouse-post">
+      <a class="warehouse-open" href="{% url 'warehouse_sale_print' sale.pk %}" target="_blank" rel="noopener">Распечатать накладную ↗</a>
+      {% if sale.closed_at %}<a class="warehouse-open" href="{% url 'warehouse_returns' %}?order={{ sale.number }}">Оформить возврат</a>{% endif %}
+      {% if not sale.closed_at %}
+        <form method="post" class="warehouse-form">
+          {% csrf_token %}
+          {{ close_form.payment_method.as_field_group }}
+          <button type="submit" class="warehouse-primary" name="action" value="close">Завершить заказ</button>
+        </form>
+      {% endif %}
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

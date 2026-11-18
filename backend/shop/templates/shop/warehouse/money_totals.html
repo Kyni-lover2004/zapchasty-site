@@ -1,0 +1,6 @@
+<dl class="warehouse-money-totals">
+  <div><dt>Выручка</dt><dd>{{ totals.revenue|floatformat:"2g" }} ₽</dd></div>
+  <div><dt>Расходы</dt><dd>{{ totals.expenses|floatformat:"2g" }} ₽</dd></div>
+  <div><dt>Возвраты</dt><dd>{{ totals.refunds|floatformat:"2g" }} ₽</dd></div>
+  <div><dt>Итого с учётом расходов и возвратов</dt><dd{% if totals.balance < 0 %} class="warehouse-negative"{% endif %}>{{ totals.balance|floatformat:"2g" }} ₽</dd></div>
+</dl>

@@ -1,0 +1,43 @@
+{% extends "shop/warehouse/base.html" %}
+{% load static %}
+{% block bodyclass %}{{ block.super }} warehouse-print-card{% endblock %}
+{% block extrahead %}{{ block.super }}<script src="{% static 'shop/warehouse.js' %}?v=label-50x30" defer></script>{% endblock %}
+{% block content %}
+<p class="warehouse-meta"><a href="{% url 'warehouse_stock' %}">← К остаткам</a> · {{ product.part }}{% if product.subtitle %} · {{ product.subtitle }}{% endif %}</p>
+<section class="warehouse-panel warehouse-product-label">
+  <h2>Готовая этикетка · 50 × 30 мм</h2>
+  {% include "shop/warehouse/label.html" %}
+  <div class="warehouse-label-actions">
+    <button type="button" class="warehouse-primary" data-print-label>Напечатать этикетку</button>
+    <a href="{% url 'warehouse_labels' product.pk %}">Печать нескольких копий</a>
+    <span role="alert" data-print-error hidden>QR-код не загрузился. Обновите страницу и попробуйте ещё раз.</span>
+  </div>
+</section>
+<section class="warehouse-panel">
+  <h2>На складе {{ product.stock }} шт.</h2>
+  <form method="post" class="warehouse-form">
+    {% csrf_token %}
+    {{ form.as_div }}
+    <button type="submit" class="warehouse-primary">Записать движение</button>
+  </form>
+  <p class="warehouse-hint">Для пересчёта укажите, сколько штук фактически осталось на складе.</p>
+</section>
+<section class="warehouse-panel">
+  <h2>История движений</h2>
+  <div class="warehouse-scroll">
+    <table class="warehouse-table">
+      <thead><tr><th scope="col">Дата</th><th scope="col">Операция</th><th scope="col">Изменение</th><th scope="col">Остаток</th><th scope="col">Сотрудник</th><th scope="col">Основание</th></tr></thead>
+      <tbody>
+        {% for movement in page %}
+        <tr>
+          <td>{{ movement.created_at|date:"d.m.Y H:i" }}</td><td>{{ movement.get_kind_display }}</td>
+          <td>{{ movement.change|stringformat:"+d" }}</td><td>{{ movement.balance }}</td><td>{{ movement.employee_name }}</td>
+          <td>{% if movement.receipt %}<a href="{% url 'warehouse_receipt' movement.receipt_id %}">Накладная № {{ movement.receipt.number }}</a>{% elif movement.sale %}<a href="{% url 'warehouse_sale' movement.sale_id %}">Заказ {{ movement.sale.number }}</a>{% else %}{{ movement.reason }}{% endif %}</td>
+        </tr>
+        {% empty %}<tr><td colspan="6">Движений пока нет.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% include "shop/warehouse/pagination.html" %}
+</section>
+{% endblock %}

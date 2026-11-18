@@ -1,0 +1,8 @@
+<div class="warehouse-label">
+  <img src="{% url 'warehouse_qr' product.pk %}" alt="QR {{ product.part }}" width="76" height="76">
+  <div class="warehouse-label-text">
+    <strong>{{ product.part }}</strong>
+    <span>{{ product.name }}</span>
+    {% if product.subtitle %}<small>{{ product.subtitle }}</small>{% endif %}
+  </div>
+</div>

@@ -1,0 +1,17 @@
+[Unit]
+Description=Zapchasti62 catalog
+After=network.target postgresql.service
+
+[Service]
+User=z62
+Group=www-data
+WorkingDirectory=/srv/z62/backend
+EnvironmentFile=/etc/z62.env
+ExecStart=/srv/z62/.venv/bin/gunicorn config.wsgi:application --bind 127.0.0.1:8000 --workers 3 --timeout 60
+Restart=on-failure
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

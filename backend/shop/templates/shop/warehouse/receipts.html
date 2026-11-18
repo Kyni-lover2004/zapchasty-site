@@ -1,0 +1,31 @@
+{% extends "shop/warehouse/base.html" %}
+{% block content %}
+<section class="warehouse-panel">
+  <h2>Новая накладная</h2>
+  <form method="post" class="warehouse-form">
+    {% csrf_token %}
+    {{ form.as_div }}
+    <button type="submit" class="warehouse-primary">Создать</button>
+  </form>
+</section>
+<section class="warehouse-panel">
+  <h2>Накладные</h2>
+  <div class="warehouse-scroll">
+    <table class="warehouse-table">
+      <thead><tr><th scope="col">Номер</th><th scope="col">Поставщик</th><th scope="col">Создана</th><th scope="col">Статус</th><th scope="col">Действие</th></tr></thead>
+      <tbody>
+        {% for receipt in page %}
+        <tr>
+          <th scope="row"><a href="{% url 'warehouse_receipt' receipt.pk %}">{{ receipt.number }}</a></th>
+          <td>{{ receipt.supplier|default:"—" }}</td>
+          <td>{{ receipt.created_at|date:"d.m.Y H:i" }}</td>
+          <td><span class="warehouse-status{% if receipt.posted_at %} is-posted{% endif %}">{% if receipt.posted_at %}Проведена{% else %}В приёмке{% endif %}</span></td>
+          <td><a class="warehouse-open" href="{% url 'warehouse_receipt' receipt.pk %}" aria-label="Открыть накладную № {{ receipt.number }} от {{ receipt.created_at|date:'d.m.Y H:i' }}">Открыть</a></td>
+        </tr>
+        {% empty %}<tr><td colspan="5">Накладных пока нет.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% include "shop/warehouse/pagination.html" %}
+</section>
+{% endblock %}

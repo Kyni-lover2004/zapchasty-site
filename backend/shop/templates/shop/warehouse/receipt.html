@@ -1,0 +1,77 @@
+{% extends "shop/warehouse/base.html" %}
+{% load static %}
+{% block extrahead %}{{ block.super }}{% if not receipt.posted_at %}<script src="{% static 'shop/warehouse.js' %}" defer></script>{% endif %}{% endblock %}
+{% block content %}
+<p class="warehouse-meta"><a href="{% url 'warehouse_receipts' %}">← К накладным</a>{% if receipt.supplier %} · {{ receipt.supplier }}{% endif %}{% if receipt.posted_at %} · Проведена {{ receipt.posted_at|date:"d.m.Y H:i" }}{% else %} · В приёмке{% endif %}</p>
+{% if not receipt.posted_at %}
+<div class="warehouse-panels">
+  <section class="warehouse-panel">
+    <h2>Добавить позицию</h2>
+    <form method="post" class="warehouse-form">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="add">
+      <label>Поиск по названию или артикулу
+        <input id="warehouse-search" type="text" autocomplete="off" data-url="{% url 'warehouse_suggest' %}" placeholder="Например, дисплей iPhone 11">
+      </label>
+      <label>Артикул
+        <input id="warehouse-part" name="code" required maxlength="100" autocomplete="off" placeholder="z62-0000">
+      </label>
+      <label>По накладной <input type="number" name="quantity" min="1" max="2147483647" value="1" required></label>
+      <button type="submit" class="warehouse-primary">Сохранить позицию</button>
+    </form>
+    <div id="warehouse-suggestions" class="warehouse-suggestions" aria-live="polite"></div>
+    <p class="warehouse-hint">Если товар уже есть в накладной, изменится количество по документу.</p>
+    {% if perms.shop.add_product %}<a href="{% url 'admin:shop_product_add' %}" target="_blank" rel="noopener">Создать карточку товара в админке ↗</a>{% endif %}
+  </section>
+  <section class="warehouse-panel warehouse-scan">
+    <h2>Сверка сканером</h2>
+    <form method="post" class="warehouse-form">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="scan">
+      <label>QR-код или артикул
+        <input name="code" required maxlength="100" autocomplete="off" {% if lines %}autofocus{% endif %} placeholder="Отсканируйте этикетку">
+      </label>
+      <label>Штук за скан <input type="number" name="quantity" min="1" max="2147483647" value="1" required></label>
+      <button type="submit" class="warehouse-primary">Засчитать</button>
+    </form>
+    <p class="warehouse-hint">Для пакета одинаковых деталей введите фактическое количество, верните курсор в поле «QR-код или артикул» и отсканируйте этикетку.</p>
+  </section>
+</div>
+{% endif %}
+<section class="warehouse-panel">
+  <h2>Позиции накладной</h2>
+  <div class="warehouse-scroll">
+    <table class="warehouse-table">
+      <thead><tr><th scope="col">Товар</th><th scope="col">Артикул</th><th scope="col">По накладной</th><th scope="col">Принято</th><th scope="col">Этикетки</th>{% if not receipt.posted_at %}<th scope="col">Действие</th>{% endif %}</tr></thead>
+      <tbody>
+        {% for line in lines %}
+        <tr>
+          <th scope="row">{{ line.product.name }}{% if line.product.subtitle %}<small>{{ line.product.subtitle }}</small>{% endif %}</th>
+          <td>{{ line.product.part }}</td><td>{{ line.expected }}</td>
+          <td {% if line.received > line.expected or receipt.posted_at and line.received != line.expected %}class="warehouse-difference"{% endif %}>{{ line.received }}</td>
+          <td><a href="{% url 'warehouse_labels' line.product_id %}?line={{ line.pk }}" target="_blank" rel="noopener">Печать ↗</a></td>
+          {% if not receipt.posted_at %}
+          <td>
+            <form method="post" class="warehouse-inline">
+              {% csrf_token %}
+              <input type="hidden" name="line" value="{{ line.pk }}">
+              {% if line.received %}<input type="number" name="quantity" aria-label="Сколько штук отменить" min="1" max="{{ line.received }}" value="1"><button type="submit" name="action" value="undo">Отменить</button>
+              {% else %}<button type="submit" name="action" value="remove">Убрать</button>{% endif %}
+            </form>
+          </td>
+          {% endif %}
+        </tr>
+        {% empty %}<tr><td colspan="6">Добавьте товар и количество по накладной.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if not receipt.posted_at and lines %}
+  <form method="post" class="warehouse-form warehouse-post">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="post">
+    {% if differs %}<label class="warehouse-check"><input type="checkbox" name="accept_difference" required> Подтверждаю расхождения и принимаю фактическое количество</label>{% endif %}
+    <button type="submit" class="warehouse-primary">Провести приход</button>
+  </form>
+  {% endif %}
+</section>
+{% endblock %}

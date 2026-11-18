@@ -1,0 +1,44 @@
+{% extends "shop/warehouse/base.html" %}
+{% block content %}
+<section class="warehouse-panel">
+  <form method="get" class="warehouse-form">
+    <label>Номер заказа
+      <input name="order" value="{{ order }}" required maxlength="24" placeholder="r62-0000">
+    </label>
+    <button class="warehouse-primary" type="submit">Найти заказ</button>
+  </form>
+  {% if lookup_error %}<p role="alert">{{ lookup_error }}</p>{% endif %}
+</section>
+{% if form %}
+<section class="warehouse-panel">
+  <h2><a href="{% url 'warehouse_sale' sale.pk %}">Заказ {{ sale.number }}</a></h2>
+  <form method="post" action="?order={{ sale.number }}">
+    {% csrf_token %}
+    {{ form.operation_id }}
+    {{ form.operation_id.errors }}
+    {{ form.non_field_errors }}
+    <div class="warehouse-scroll">
+      <table class="warehouse-table">
+        <thead>
+          <tr><th scope="col">Товар</th><th scope="col">Артикул</th><th scope="col">Цена, ₽</th><th scope="col">Куплено</th><th scope="col">Уже возвращено</th><th scope="col">Вернуть, шт.</th></tr>
+        </thead>
+        <tbody>
+          {% for line, available, field in form.rows %}
+            <tr>
+              <th scope="row">{{ line.name }}{% if line.subtitle %}<small>{{ line.subtitle }}</small>{% endif %}</th>
+              <td>{{ line.part }}</td><td>{{ line.price }}</td><td>{{ line.quantity }}</td><td>{{ line.returned }}</td>
+              <td class="warehouse-inline">{% if available %}{{ field }}{% else %}—{% endif %}{{ field.errors }}</td>
+            </tr>
+          {% empty %}<tr><td colspan="6">В заказе нет позиций.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if can_refund %}
+      <div class="warehouse-post"><button class="warehouse-primary" type="submit">Провести возврат</button></div>
+    {% else %}
+      <p>Позиций к возврату нет.</p>
+    {% endif %}
+  </form>
+</section>
+{% endif %}
+{% endblock %}

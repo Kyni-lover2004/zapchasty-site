@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Накладная {{ sale.number }}</title>
+  <link rel="icon" href="/assets/img/remophone.svg" type="image/svg+xml">
+  <style>
+    @page { size: A4; margin: 15mm; }
+    body { max-width: 180mm; margin: 24px auto; padding: 0 12px; color: #171e26; font: 14px/1.4 system-ui, sans-serif; }
+    .print-controls { display: flex; justify-content: flex-end; gap: 12px; align-items: center; }
+    h1 { font-size: 24px; margin: 18px 0 8px; }
+    .document-brand { display: flex; align-items: center; gap: 8px; }
+    table { width: 100%; border-collapse: collapse; margin: 22px 0; }
+    th, td { border: 1px solid #89929c; padding: 7px 8px; text-align: left; }
+    tr { break-inside: avoid; }
+    tfoot { display: table-row-group; }
+    small { display: block; }
+    .signatures { display: flex; flex-wrap: wrap; gap: 24px; break-inside: avoid; }
+    @media print { body { margin: 0; padding: 0; } .print-controls { display: none; } }
+  </style>
+</head>
+<body>
+  <div class="print-controls">
+    <a href="{% url 'warehouse_sale' sale.pk %}">К заказу</a>
+    <button type="button" onclick="window.print()">Печать</button>
+  </div>
+  <h1>Накладная № {{ sale.number }}</h1>
+  <p class="document-brand"><img src="/assets/img/remophone.svg" width="24" height="24" alt=""> <strong>Remophone</strong> · {{ sale.created_at|date:"d.m.Y" }}</p>
+  {% include "shop/warehouse/sale_lines.html" with print_mode=True %}
+  <div class="signatures"><p>Отпустил: __________________</p><p>Получил: __________________</p></div>
+</body>
+</html>

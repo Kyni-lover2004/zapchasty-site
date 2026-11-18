@@ -1,0 +1,25 @@
+{% extends "shop/warehouse/base.html" %}
+{% load static %}
+{% block bodyclass %}{{ block.super }} warehouse-print{% endblock %}
+{% block extrahead %}{{ block.super }}<script src="{% static 'shop/warehouse.js' %}?v=label-50x30" defer></script>{% endblock %}
+{% block content %}
+<section class="warehouse-panel print-controls">
+  <h2>Этикетка 50 × 30 мм</h2>
+  <form method="get" class="warehouse-form">
+    {% if line %}
+    <input type="hidden" name="line" value="{{ line.pk }}">
+    <span>Накладная № {{ line.receipt.number }} · {{ line.expected }} шт. по документу</span>
+    {% endif %}
+    {{ form.copies.as_field_group }}
+    <button type="submit">Обновить</button>
+    {% if copies %}<button type="button" class="warehouse-primary" data-print-label>Печать</button>{% endif %}
+  </form>
+  <p class="warehouse-hint">В настройках принтера выберите бумагу 50 × 30 мм и масштаб 100%.</p>
+  <span role="alert" data-print-error hidden>QR-код не загрузился. Обновите страницу и попробуйте ещё раз.</span>
+</section>
+<div class="warehouse-labels">
+  {% for copy in copies %}
+    {% include "shop/warehouse/label.html" %}
+  {% endfor %}
+</div>
+{% endblock %}

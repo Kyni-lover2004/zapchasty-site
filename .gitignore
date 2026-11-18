@@ -1,0 +1,8 @@
+.venv/
+.local/
+/admin-access.txt
+media/
+staticfiles/
+__pycache__/
+*.pyc
+.env

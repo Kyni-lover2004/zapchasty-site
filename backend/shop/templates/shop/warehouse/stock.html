@@ -1,0 +1,29 @@
+{% extends "shop/warehouse/base.html" %}
+{% block content %}
+<section class="warehouse-panel warehouse-stock-toolbar" aria-label="Управление товарами">
+  <form method="get" role="search" aria-label="Поиск по остаткам">
+    <label for="stock-search">Поиск по остаткам</label>
+    <div class="warehouse-stock-controls">
+      <input id="stock-search" name="q" type="search" maxlength="250" value="{{ query }}" autocomplete="off" placeholder="QR, артикул, название или модель" autofocus>
+      <button type="submit" class="warehouse-primary">Найти</button>
+      {% if query %}<a class="warehouse-open" href="{% url 'warehouse_stock' %}">Сбросить</a>{% endif %}
+    </div>
+  </form>
+  {% if perms.shop.add_product %}
+    <a class="warehouse-open warehouse-new-product" href="{% url 'admin:shop_product_add' %}"><span aria-hidden="true">+</span> Новый товар</a>
+  {% endif %}
+</section>
+<section class="warehouse-panel">
+  <div class="warehouse-scroll">
+    <table class="warehouse-table">
+      <thead><tr><th scope="col">Товар</th><th scope="col">Артикул</th><th scope="col">Остаток, шт.</th></tr></thead>
+      <tbody>
+        {% for product in page %}
+        <tr><th scope="row"><a href="{% url 'warehouse_product' product.pk %}">{{ product.name }}</a>{% if product.subtitle %}<small>{{ product.subtitle }}</small>{% endif %}</th><td>{{ product.part }}</td><td>{{ product.stock }}</td></tr>
+        {% empty %}<tr><td colspan="3">Товары не найдены.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% include "shop/warehouse/pagination.html" %}
+</section>
+{% endblock %}
