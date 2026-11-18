@@ -246,7 +246,18 @@ class WarehouseTests(TestCase):
         })
         self.assertEqual(self.client.get('/api/catalog/').json()['PRODUCTS'][0]['stock'], 1)
 
-        self.client.post(sale_url, {'action': 'close'})
+        response = self.client.post(sale_url, {'action': 'close'}, follow=True)
+        self.assertContains(response, 'Выберите способ оплаты')
+        self.assertIsNone(Sale.objects.first().closed_at)
+        draft_url = sale_url + 'receipt-draft/'
+        self.assertRedirects(self.client.get(draft_url), sale_url)
+        self.assertRedirects(self.client.post(sale_url, {'action': 'close_receipt', 'payment_method': 'cash'}), draft_url)
+        draft = self.client.get(draft_url)
+        self.assertContains(draft, 'Черновик · касса не подключена')
+        self.assertContains(draft, 'Наличные')
+        self.assertContains(draft, self.employee.username)
+        self.assertContains(draft, self.product.name)
+        self.assertEqual(draft.context['total'], 1000)
         printed = self.client.get(sale_url + 'print/')
         self.assertContains(printed, 'Накладная № r62-0000')
         self.assertContains(printed, self.product.part)
@@ -279,13 +290,22 @@ class WarehouseTests(TestCase):
             'spent_at': '2026-01-02T01:20', 'category': 'purchase',
             'description': 'Детали у поставщика', 'amount': '120.50', 'entry_id': uuid.uuid4(),
         }
+        self.assertEqual(self.client.post(report_url, expense_data).status_code, 200)
+        self.assertFalse(Expense.objects.exists())
+        expense_data['payment_method'] = 'cash'
         self.assertRedirects(self.client.post(report_url, expense_data), report_url + '?day=2026-01-02#report-day')
         self.assertEqual(self.client.post(report_url, expense_data).status_code, 302)
         self.assertEqual(Expense.objects.count(), 1)
         response = self.client.get(report_url, {'day': '2026-01-02'})
-        self.assertEqual(response.context['totals'], {
+        totals = response.context['totals'].copy()
+        payments = totals.pop('payments')
+        self.assertEqual(totals, {
             'revenue': 1000, 'expenses': Decimal('120.50'), 'refunds': 0, 'balance': Decimal('879.50'),
         })
+        self.assertEqual(payments, [
+            {'label': 'Наличные', 'revenue': 0, 'expenses': Decimal('120.50'), 'refunds': 0, 'balance': Decimal('-120.50')},
+            {'label': 'Карта', 'revenue': 1000, 'expenses': 0, 'refunds': 0, 'balance': 1000},
+        ])
         self.assertContains(response, 'Детали у поставщика')
         self.assertContains(response, 'Карта')
         self.assertContains(response, f'href="{order_url}"')

@@ -122,6 +122,7 @@ class Sale(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     closed_at = models.DateTimeField(null=True, blank=True, db_index=True)
     payment_method = models.CharField(max_length=12, choices=Payment.choices, blank=True)
+    cashier_name = models.CharField(max_length=300, blank=True)
 
     @property
     def number(self):
@@ -180,6 +181,7 @@ class Expense(models.Model):
                                  validators=[MinValueValidator(Decimal('0.01'))])
     category = models.CharField('Категория', max_length=12, choices=Category.choices)
     description = models.CharField('На что или кому', max_length=250)
+    payment_method = models.CharField('Способ оплаты', max_length=12, choices=Sale.Payment.choices, blank=True)
     spent_at = models.DateTimeField('Дата и время расхода', db_index=True)
     employee_name = models.CharField(max_length=150)
 

@@ -4,3 +4,19 @@
   <div><dt>Возвраты</dt><dd>{{ totals.refunds|floatformat:"2g" }} ₽</dd></div>
   <div><dt>Итого с учётом расходов и возвратов</dt><dd{% if totals.balance < 0 %} class="warehouse-negative"{% endif %}>{{ totals.balance|floatformat:"2g" }} ₽</dd></div>
 </dl>
+<div class="warehouse-scroll">
+  <table class="warehouse-table" aria-label="Суммы по способам оплаты">
+    <thead><tr><th scope="col">Способ оплаты</th><th scope="col">Выручка, ₽</th><th scope="col">Расходы, ₽</th><th scope="col">Возвраты, ₽</th><th scope="col">Итого, ₽</th></tr></thead>
+    <tbody>
+      {% for payment in totals.payments %}
+      <tr>
+        <th scope="row">{{ payment.label }}</th>
+        <td>{{ payment.revenue|floatformat:"2g" }}</td>
+        <td>{{ payment.expenses|floatformat:"2g" }}</td>
+        <td>{{ payment.refunds|floatformat:"2g" }}</td>
+        <td{% if payment.balance < 0 %} class="warehouse-negative"{% endif %}>{{ payment.balance|floatformat:"2g" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

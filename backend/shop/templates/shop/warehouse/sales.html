@@ -3,7 +3,7 @@
 <section class="warehouse-panel">
   <h2>Деньги за сегодня</h2>
   {% include "shop/warehouse/money_totals.html" %}
-  <div class="warehouse-form">
+  <div class="warehouse-form warehouse-post">
     <form method="post">
       {% csrf_token %}
       <button type="submit" class="warehouse-primary">Создать заказ</button>

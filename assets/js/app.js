@@ -337,16 +337,16 @@
   /** Рисует разнесённые слои и связывает детали с разделами каталога. */
   function blueprintSvg() {
     const parts = [
-      { label: "Защитное стекло", category: "glass", x: 26, y: 94, line: "M38 94H55" },
-      { label: "Дисплей", category: "displays", x: 26, y: 188, line: "M38 188H72" },
-      { label: "Камеры", category: "cameras", x: 199, y: 65, line: "M211 65H229L243 79" },
-      { label: "Основная плата", category: "boards", x: 371, y: 82, line: "M359 82H344L327 99" },
-      { label: "Компоненты плат", category: "board-components", x: 371, y: 128, line: "M359 128H324L303 110" },
-      { label: "Аккумулятор", category: "batteries", x: 371, y: 184, line: "M359 184H319" },
-      { label: "Шлейф", category: "flex", x: 199, y: 224, line: "M211 224H324" },
-      { label: "Нижние платы", category: "lower-boards", x: 199, y: 278, line: "M211 278H238" },
+      { label: "Защитное стекло", category: "glass", x: 1, y: 94, line: "M13 94H30" },
+      { label: "Дисплей", category: "displays", x: 1, y: 188, line: "M13 188H47" },
+      { label: "Камеры", category: "cameras", x: 188, y: 65, line: "M200 65H229L243 79" },
+      { label: "Основная плата", category: "boards", x: 372, y: 82, line: "M360 82H344L327 99" },
+      { label: "Компоненты плат", category: "board-components", x: 372, y: 128, line: "M360 128H324L303 110" },
+      { label: "Аккумулятор", category: "batteries", x: 372, y: 184, line: "M360 184H319" },
+      { label: "Шлейф", category: "flex", x: 188, y: 224, line: "M200 224H324" },
+      { label: "Нижние платы", category: "lower-boards", x: 188, y: 278, line: "M200 278H238" },
       { label: "Разъём зарядки", category: "charging", x: 280, y: 332, line: "M280 320V307" },
-      { label: "Динамик", category: "speakers", x: 371, y: 266, line: "M359 266H342L330 288" },
+      { label: "Динамик", category: "speakers", x: 372, y: 266, line: "M360 266H342L330 288" },
       { label: "Корпус и крышка", category: "covers", x: 542, y: 267, line: "M530 267H516" },
     ];
     const annotations = parts.map(({ x, y, line, category }, index) => `
@@ -359,7 +359,7 @@
       <figure class="blueprint" aria-label="Схема разбора смартфона">
         <div class="blueprint__head"><span>Схема разбора · Remophone</span><b>Рязань</b></div>
         <div class="blueprint__art">
-          <svg viewBox="0 0 574 360" aria-hidden="true">
+          <svg viewBox="-25 0 599 360" aria-hidden="true">
             <defs>
               <pattern id="bp-grid" width="16" height="16" patternUnits="userSpaceOnUse">
                 <path d="M16 0H0V16" fill="none" stroke="#dfebf6"/>
@@ -368,14 +368,14 @@
                 <path d="M0 0V5" stroke="#9dbdde" fill="none"/>
               </pattern>
             </defs>
-            <rect width="574" height="360" fill="url(#bp-grid)"/>
+            <rect x="-25" width="599" height="360" fill="url(#bp-grid)"/>
             <g class="bp-layer-name">
-              <text x="117" y="28">ПЕРЕДНИЙ МОДУЛЬ</text>
+              <text x="92" y="28">ПЕРЕДНИЙ МОДУЛЬ</text>
               <text x="280" y="28">ВНУТРЕННИЕ УЗЛЫ</text>
               <text x="461" y="28">ЗАДНЯЯ КРЫШКА</text>
             </g>
-            <path class="bp-axis" d="M10 200H564M115 41V344M280 41V344M461 41V344"/>
-            <g class="bp-shell">
+            <path class="bp-axis" d="M-15 200H564M92 41V344M280 41V344M461 41V344"/>
+            <g class="bp-shell" transform="translate(-25 0)">
               <rect x="55" y="58" width="124" height="251" rx="21"/>
               <rect x="64" y="67" width="106" height="233" rx="16" class="bp-axis"/>
               <rect class="bp-panel" x="72" y="76" width="90" height="215" rx="10"/>
@@ -1428,7 +1428,12 @@
 
   /** Создаёт переключатель избранного для товара. */
   function renderFavoriteButton(product) {
-    return `<div class="save-actions"><button type="button" data-favorite="${product.id}" aria-pressed="${favorites.includes(product.id)}">♡ Избранное</button></div>`;
+    return `<div class="save-actions">
+      <button type="button" data-favorite="${product.id}" aria-pressed="${favorites.includes(product.id)}">
+        <svg class="favorite-heart" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.2 4.4 13a4.7 4.7 0 0 1 6.6-6.7l1 1 1-1a4.7 4.7 0 0 1 6.6 6.7Z"/></svg>
+        Избранное
+      </button>
+    </div>`;
   }
 
   /** Обновляет состояние кнопок без перерисовки страницы и потери фокуса. */
@@ -1528,6 +1533,15 @@
     try { localStorage.setItem("z62_favorites", JSON.stringify(favorites)); } catch (error) { showToast("Подборка доступна до закрытия страницы: сохранение недоступно."); }
     if (getRoute().path === "/favorites") renderFavorites();
     syncShoppingControls();
+    const heart = button.querySelector(".favorite-heart");
+    heart?.getAnimations?.().forEach(animation => animation.cancel());
+    if (index < 0 && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      heart?.animate?.([
+        { transform: "scale(0.88)" },
+        { transform: "scale(1.32)", offset: 0.45 },
+        { transform: "scale(1)" },
+      ], { duration: 320, easing: "ease-out" });
+    }
   });
 
   /* ---------- Запуск ---------- */

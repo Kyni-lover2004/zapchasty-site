@@ -24,12 +24,16 @@
   {% if lines %}
     <div class="warehouse-form warehouse-post">
       <a class="warehouse-open" href="{% url 'warehouse_sale_print' sale.pk %}" target="_blank" rel="noopener">Распечатать накладную ↗</a>
-      {% if sale.closed_at %}<a class="warehouse-open" href="{% url 'warehouse_returns' %}?order={{ sale.number }}">Оформить возврат</a>{% endif %}
+      {% if sale.closed_at %}
+        <a class="warehouse-open" href="{% url 'warehouse_sale_receipt_draft' sale.pk %}">Черновик кассового чека</a>
+        <a class="warehouse-open" href="{% url 'warehouse_returns' %}?order={{ sale.number }}">Оформить возврат</a>
+      {% endif %}
       {% if not sale.closed_at %}
         <form method="post" class="warehouse-form">
           {% csrf_token %}
           {{ close_form.payment_method.as_field_group }}
-          <button type="submit" class="warehouse-primary" name="action" value="close">Завершить заказ</button>
+          <button type="submit" class="warehouse-primary" name="action" value="close_receipt">Принять оплату и подготовить чек</button>
+          <button type="submit" name="action" value="close">Завершить заказ</button>
         </form>
       {% endif %}
     </div>

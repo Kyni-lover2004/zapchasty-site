@@ -1,6 +1,6 @@
 {% extends "admin/base_site.html" %}
 {% load static %}
-{% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static 'shop/warehouse.css' %}?v=stock-toolbar">{% endblock %}
+{% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static 'shop/warehouse.css' %}?v=receipt-draft">{% endblock %}
 {% block bodyclass %}{{ block.super }} warehouse{% endblock %}
 {% block breadcrumbs %}{% endblock %}
 {% block content_title %}
@@ -8,7 +8,7 @@
   {% with route=request.resolver_match.url_name %}
     <a href="{% url 'warehouse_receipts' %}" {% if route == 'warehouse_receipts' or route == 'warehouse_receipt' %}class="current"{% endif %}>Приёмка</a>
     <a href="{% url 'warehouse_stock' %}" {% if route == 'warehouse_stock' or route == 'warehouse_product' %}class="current"{% endif %}>Учёт остатков</a>
-    <a href="{% url 'warehouse_sales' %}" {% if route == 'warehouse_sales' or route == 'warehouse_sale' or route == 'warehouse_sales_report' %}class="current"{% endif %}>Реализация</a>
+    <a href="{% url 'warehouse_sales' %}" {% if route == 'warehouse_sales' or route == 'warehouse_sale' or route == 'warehouse_sales_report' or route == 'warehouse_sale_receipt_draft' %}class="current"{% endif %}>Реализация</a>
     <a href="{% url 'warehouse_returns' %}" {% if route == 'warehouse_returns' %}class="current" aria-current="page"{% endif %}>Возвраты</a>
   {% endwith %}
   <a href="{% url 'admin:index' %}">Админка</a>

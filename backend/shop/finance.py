@@ -7,45 +7,62 @@ from django.db.models.functions import Cast, TruncDate
 from .models import Expense, Sale, SaleLine, SaleRefund, SaleRefundLine
 
 
+def make_totals(amounts):
+    """Возвращает суммы операций и итог после расходов и возвратов."""
+    revenue = amounts.get('revenue', 0)
+    expenses = amounts.get('expenses', 0)
+    refunds = amounts.get('refunds', 0)
+    return {'revenue': revenue, 'expenses': expenses, 'refunds': refunds,
+            'balance': revenue - expenses - refunds}
+
+
+def collect_daily_amounts(first, last, by_payment=False):
+    """Суммирует операции по местным датам и при необходимости по способам оплаты."""
+    sources = [
+        ('revenue', SaleLine.objects.all(), 'sale__closed_at', 'sale__payment_method',
+         Cast('price', BigIntegerField()) * F('quantity')),
+        ('expenses', Expense.objects.all(), 'spent_at', 'payment_method', F('amount')),
+        ('refunds', SaleRefundLine.objects.all(), 'refund__created_at', 'refund__sale__payment_method',
+         Cast('sale_line__price', BigIntegerField()) * F('quantity')),
+    ]
+    daily = {}
+    for operation, source, timestamp, payment, amount in sources:
+        rows = source.filter(**{f'{timestamp}__date__range': (first, last)}).order_by()
+        groups = {'day': TruncDate(timestamp)}
+        if by_payment:
+            groups['payment'] = F(payment)
+        for row in rows.values(**groups).annotate(total=Sum(amount)):
+            key = (row['day'], row['payment']) if by_payment else row['day']
+            daily.setdefault(key, {})[operation] = row['total']
+    return daily
+
+
 def get_day_totals(day):
-    """Возвращает выручку, возвраты и расходы за местную календарную дату."""
-    line_amount = Cast('price', BigIntegerField()) * F('quantity')
-    revenue = SaleLine.objects.filter(sale__closed_at__date=day).aggregate(
-        total=Sum(line_amount, default=0),
-    )['total']
-    expenses = Expense.objects.filter(spent_at__date=day).aggregate(total=Sum('amount', default=0))['total']
-    refunds = SaleRefundLine.objects.filter(refund__created_at__date=day).aggregate(
-        total=Sum(Cast('sale_line__price', BigIntegerField()) * F('quantity'), default=0),
-    )['total']
-    return {'revenue': revenue, 'expenses': expenses, 'refunds': refunds, 'balance': revenue - expenses - refunds}
+    """Возвращает общие суммы и разбивку за выбранный день."""
+    totals_by_payment = {payment: amounts for (_, payment), amounts in collect_daily_amounts(day, day, by_payment=True).items()}
+    totals = make_totals({
+        operation: sum(amounts.get(operation, 0) for amounts in totals_by_payment.values())
+        for operation in ('revenue', 'expenses', 'refunds')
+    })
+    methods = [Sale.Payment.CASH, Sale.Payment.CARD]
+    if Sale.Payment.TRANSFER in totals_by_payment:
+        methods.append(Sale.Payment.TRANSFER)
+    totals['payments'] = [
+        {'label': method.label, **make_totals(totals_by_payment.get(method, {}))}
+        for method in methods
+    ]
+    if '' in totals_by_payment:
+        totals['payments'].append({'label': 'Не указан', **make_totals(totals_by_payment[''])})
+    return totals
 
 
 def get_month_days(day):
     """Группирует операции по дням выбранного месяца."""
     first = day.replace(day=1)
     last = day.replace(day=monthrange(day.year, day.month)[1])
-    line_amount = Cast('price', BigIntegerField()) * F('quantity')
-    sales = SaleLine.objects.filter(sale__closed_at__date__range=(first, last)).order_by().values(
-        day=TruncDate('sale__closed_at'),
-    ).annotate(total=Sum(line_amount))
-    expenses = Expense.objects.filter(spent_at__date__range=(first, last)).order_by().values(
-        day=TruncDate('spent_at'),
-    ).annotate(total=Sum('amount'))
-    refunds = SaleRefundLine.objects.filter(refund__created_at__date__range=(first, last)).order_by().values(
-        day=TruncDate('refund__created_at'),
-    ).annotate(total=Sum(Cast('sale_line__price', BigIntegerField()) * F('quantity')))
-    revenue_by_day = {row['day']: row['total'] for row in sales}
-    expenses_by_day = {row['day']: row['total'] for row in expenses}
-    refunds_by_day = {row['day']: row['total'] for row in refunds}
-    days = sorted(revenue_by_day.keys() | expenses_by_day.keys() | refunds_by_day.keys() | {day}, reverse=True)
-    rows = []
-    for date in days:
-        revenue = revenue_by_day.get(date, 0)
-        expense = expenses_by_day.get(date, 0)
-        refund = refunds_by_day.get(date, 0)
-        rows.append({'day': date, 'revenue': revenue, 'expenses': expense, 'refunds': refund,
-                     'balance': revenue - expense - refund})
-    return rows
+    daily = collect_daily_amounts(first, last)
+    return [{'day': date, **make_totals(daily.get(date, {}))}
+            for date in sorted(daily.keys() | {day}, reverse=True)]
 
 
 def get_day_entries(day):
@@ -56,7 +73,10 @@ def get_day_entries(day):
     refunds = SaleRefund.objects.filter(created_at__date=day).select_related('sale').annotate(
         amount=Sum(Cast('lines__sale_line__price', BigIntegerField()) * F('lines__quantity'), default=0),
     )
-    entries = [{'time': sale.closed_at, 'sale': sale, 'amount': sale.amount} for sale in sales]
-    entries.extend({'time': expense.spent_at, 'expense': expense, 'amount': expense.amount} for expense in expenses)
-    entries.extend({'time': refund.created_at, 'refund': refund, 'amount': refund.amount} for refund in refunds)
+    entries = [{'time': sale.closed_at, 'sale': sale, 'amount': sale.amount,
+                'payment': sale.get_payment_method_display()} for sale in sales]
+    entries.extend({'time': expense.spent_at, 'expense': expense, 'amount': expense.amount,
+                    'payment': expense.get_payment_method_display()} for expense in expenses)
+    entries.extend({'time': refund.created_at, 'refund': refund, 'amount': refund.amount,
+                    'payment': refund.sale.get_payment_method_display()} for refund in refunds)
     return sorted(entries, key=lambda entry: entry['time'], reverse=True)

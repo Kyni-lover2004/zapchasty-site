@@ -1,0 +1,33 @@
+{% extends "shop/warehouse/base.html" %}
+{% block content %}
+<p class="warehouse-meta"><a href="{% url 'warehouse_sale' sale.pk %}">← К заказу {{ sale.number }}</a></p>
+
+<section class="warehouse-panel warehouse-receipt-draft">
+  <header class="warehouse-receipt-heading">
+    <strong>Remophone</strong>
+    <span>Черновик · касса не подключена</span>
+  </header>
+  <dl class="warehouse-receipt-details">
+    <dt>Операция</dt><dd>Приход</dd>
+    <dt>Заказ</dt><dd>{{ sale.number }}</dd>
+    <dt>Оплата в магазине</dt><dd>{{ sale.closed_at|date:"d.m.Y H:i" }}</dd>
+    <dt>Сотрудник</dt><dd>{{ sale.cashier_name|default:"Не указан" }}</dd>
+  </dl>
+
+  <ul class="warehouse-receipt-items">
+    {% for line in lines %}
+      <li>
+        <strong>{{ line.name }}</strong>
+        {% if line.subtitle %}<small>{{ line.subtitle }}</small>{% endif %}
+        <div><span>{{ line.quantity }} × {{ line.price|floatformat:"2g" }} ₽</span><b>{{ line.total|floatformat:"2g" }} ₽</b></div>
+      </li>
+    {% endfor %}
+  </ul>
+
+  <dl class="warehouse-receipt-details">
+    <dt><strong>Итого</strong></dt><dd><strong>{{ total|floatformat:"2g" }} ₽</strong></dd>
+    <dt>Способ оплаты</dt><dd>{{ sale.get_payment_method_display|default:"Не указан" }}</dd>
+  </dl>
+  <p class="warehouse-hint">Реквизиты продавца и налоговые данные нужно настроить при подключении кассы. Номер фискального документа и проверочный QR-код появятся, когда касса сформирует чек.</p>
+</section>
+{% endblock %}

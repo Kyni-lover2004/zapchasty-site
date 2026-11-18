@@ -22,6 +22,8 @@ from .stock import (MAX_STOCK, StockError, adjust_stock, apply_receipt_action, a
                     find_product, get_refundable_lines, refund_sale)
 
 WAREHOUSE_PERMISSION = 'shop.operate_stock'
+PAYMENT_CHOICES = [('', 'Выберите способ оплаты'), (Sale.Payment.CASH, Sale.Payment.CASH.label),
+                   (Sale.Payment.CARD, Sale.Payment.CARD.label)]
 
 
 class ReceiptForm(forms.ModelForm):
@@ -57,9 +59,7 @@ class SaleUndoForm(LineForm):
 
 
 class SaleCloseForm(forms.Form):
-    payment_method = forms.ChoiceField(
-        label='Оплата', choices=[('', 'Не указано'), *Sale.Payment.choices], required=False,
-    )
+    payment_method = forms.ChoiceField(label='Способ оплаты', choices=PAYMENT_CHOICES)
 
 
 class SaleRefundForm(forms.Form):
@@ -89,10 +89,11 @@ class ReportDayForm(forms.Form):
 
 class ExpenseForm(forms.ModelForm):
     entry_id = forms.UUIDField(widget=forms.HiddenInput)
+    payment_method = forms.ChoiceField(label='Способ оплаты', choices=PAYMENT_CHOICES)
 
     class Meta:
         model = Expense
-        fields = ['spent_at', 'category', 'description', 'amount']
+        fields = ['spent_at', 'category', 'description', 'amount', 'payment_method']
         widgets = {'spent_at': forms.DateTimeInput(format='%Y-%m-%dT%H:%M', attrs={'type': 'datetime-local'})}
 
 
@@ -315,19 +316,26 @@ def show_sale(request, pk):
     sale = get_object_or_404(Sale, pk=pk)
     if request.method == 'POST':
         action = request.POST.get('action')
-        form_class = {'scan': SaleScanForm, 'undo': SaleUndoForm, 'close': SaleCloseForm}.get(action)
+        prepare_receipt = action == 'close_receipt'
+        stock_action = 'close' if prepare_receipt else action
+        form_class = {'scan': SaleScanForm, 'undo': SaleUndoForm, 'close': SaleCloseForm}.get(stock_action)
         if not form_class:
             return HttpResponse('Неизвестная операция.', status=400)
         form = form_class(request.POST)
         if form.is_valid():
             try:
-                result = apply_sale_action(pk, request.user, action, form.cleaned_data)
+                result = apply_sale_action(pk, request.user, stock_action, form.cleaned_data)
             except StockError as error:
                 messages.error(request, str(error))
             else:
                 messages.success(request, result)
+                if prepare_receipt:
+                    return redirect('warehouse_sale_receipt_draft', pk=pk)
         else:
-            messages.error(request, 'Проверьте код или обновите страницу заказа.')
+            if stock_action == 'close':
+                messages.error(request, 'Выберите способ оплаты, чтобы завершить заказ.')
+            else:
+                messages.error(request, 'Проверьте код или обновите страницу заказа.')
         return redirect('warehouse_sale', pk=pk)
     return render_warehouse(request, 'sale', f'Заказ {sale.number}',
                             operation_id=str(uuid.uuid4()), close_form=SaleCloseForm(), **get_sale_items(sale))
@@ -338,6 +346,16 @@ def print_sale(request, pk):
     """Выводит накладную для печати на A4."""
     sale = get_object_or_404(Sale, pk=pk)
     return render(request, 'shop/warehouse/sale_print.html', get_sale_items(sale))
+
+
+@require_GET
+def show_receipt_draft(request, pk):
+    """Показывает данные оплаченного заказа для будущей фискализации."""
+    sale = get_object_or_404(Sale, pk=pk)
+    if sale.closed_at is None:
+        messages.info(request, 'Сначала завершите оплату заказа.')
+        return redirect('warehouse_sale', pk=pk)
+    return render_warehouse(request, 'sale_receipt_draft', 'Черновик кассового чека', **get_sale_items(sale))
 
 
 def require_label_access(request):
@@ -394,6 +412,7 @@ urlpatterns = [
     path('returns/', staff_stock_view(show_returns), name='warehouse_returns'),
     path('sales/<int:pk>/', staff_stock_view(show_sale), name='warehouse_sale'),
     path('sales/<int:pk>/print/', staff_stock_view(print_sale), name='warehouse_sale_print'),
+    path('sales/<int:pk>/receipt-draft/', staff_stock_view(show_receipt_draft), name='warehouse_sale_receipt_draft'),
     path('labels/<int:pk>/', admin.site.admin_view(print_labels), name='warehouse_labels'),
     path('labels/<int:pk>/qr/', admin.site.admin_view(show_qr), name='warehouse_qr'),
 ]

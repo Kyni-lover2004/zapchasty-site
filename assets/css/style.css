@@ -2995,7 +2995,24 @@ ol {
 .search-all { color: var(--blue-dark); justify-content: center; }
 .save-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
 .save-actions button, .results__query button { padding: 7px 9px; border: 1px solid var(--line); border-radius: 5px; color: var(--steel); background: var(--paper); font: inherit; font-size: 12px; }
-.save-actions button[aria-pressed="true"], .model-brands [aria-pressed="true"] { background: var(--blue-soft); border-color: var(--blue); color: var(--blue-dark); }
+.model-brands [aria-pressed="true"] { background: var(--blue-soft); border-color: var(--blue); color: var(--blue-dark); }
+.save-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+.favorite-heart {
+  width: 1.25em;
+  height: 1.25em;
+  flex: none;
+  fill: transparent;
+  stroke: currentColor;
+  stroke-width: 1.65;
+  stroke-linejoin: round;
+}
+.save-actions button[aria-pressed="true"] { background: #fff1f4; border-color: #e5aebf; color: #8e3655; }
+.save-actions button[aria-pressed="true"] .favorite-heart { color: #bc426a; fill: currentColor; }
 .card__foot { flex-wrap: wrap; gap: 10px; }
 .card__add { width: 100%; height: 40px; border-radius: 5px; font-size: 13px; font-weight: 500; }
 .card__add.is-added { background: var(--blue-soft); color: var(--blue-dark); border-color: var(--blue-line); }

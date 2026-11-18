@@ -133,7 +133,8 @@ def apply_sale_action(sale_id, employee, action, data):
             raise StockError('Добавьте в заказ хотя бы один товар.')
         sale.closed_at = timezone.now()
         sale.payment_method = data['payment_method']
-        sale.save(update_fields=['closed_at', 'payment_method'])
+        sale.cashier_name = employee.get_full_name() or employee.get_username()
+        sale.save(update_fields=['closed_at', 'payment_method', 'cashier_name'])
         return 'Заказ завершён.'
 
     operation_id = data['operation_id']
