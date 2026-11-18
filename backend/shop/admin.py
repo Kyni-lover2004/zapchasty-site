@@ -6,8 +6,8 @@ from django.urls import reverse
 from django.utils.html import format_html
 from .models import Category, Product, ProductPartCounter, Photo, Specification, StoreSettings
 
-admin.site.site_header = 'Remophone · управление магазином'
-admin.site.site_title = 'Remophone'
+admin.site.site_header = 'PartStack · управление магазином'
+admin.site.site_title = 'PartStack'
 admin.site.index_title = 'Каталог и сотрудники'
 admin.site.site_url = '/'
 

@@ -1,4 +1,4 @@
-/* Remophone — клиентская логика: маршрутизация, поиск, фильтры, корзина. */
+/* PartStack — клиентская логика: маршрутизация, поиск, фильтры, корзина. */
 (function () {
   "use strict";
 
@@ -357,7 +357,7 @@
       </a>`).join("");
     return `
       <figure class="blueprint" aria-label="Схема разбора смартфона">
-        <div class="blueprint__head"><span>Схема разбора · Remophone</span><b>Рязань</b></div>
+        <div class="blueprint__head"><span>Схема разбора · PartStack</span><b>Рязань</b></div>
         <div class="blueprint__art">
           <svg viewBox="-25 0 599 360" aria-hidden="true">
             <defs>
@@ -434,7 +434,7 @@
   /* ---------- Главная ---------- */
 
   function renderHome() {
-    document.title = "Remophone — запчасти для ремонта телефонов в Рязани";
+    document.title = "PartStack — запчасти для ремонта телефонов в Рязани";
     setActiveCat(null);
     const featured = PRODUCTS.filter((product) => product.featured).slice(0, 8);
     app.innerHTML = `
@@ -705,7 +705,7 @@
   function renderCatalog(route, isSearch) {
     const state = filtersFromQuery(route.query);
     const base = isSearch ? "/search" : "/catalog";
-    document.title = `${pageTitle(state, isSearch)} — Remophone`;
+    document.title = `${pageTitle(state, isSearch)} — PartStack`;
     setActiveCat(state.cat.length === 1 ? state.cat[0] : "all");
 
     const brands = Array.from(new Set(PRODUCTS.map((product) => product.brand))).sort((a, b) =>
@@ -835,7 +835,7 @@
       syncShoppingControls();
       history.replaceState(null, "", "#" + buildUrl(base, state));
       setActiveCat(state.cat.length === 1 ? state.cat[0] : "all");
-      document.title = `${pageTitle(state, isSearch)} — Remophone`;
+      document.title = `${pageTitle(state, isSearch)} — PartStack`;
     }
 
     function syncControls() {
@@ -967,7 +967,7 @@
   }
 
   function renderProduct(product) {
-    document.title = `${product.name} — Remophone`;
+    document.title = `${product.name} — PartStack`;
     setActiveCat(product.category);
     const category = categoryById.get(product.category);
     const isOut = product.stock <= 0;
@@ -1170,7 +1170,7 @@
   }
 
   function renderCart() {
-    document.title = "Корзина — Remophone";
+    document.title = "Корзина — PartStack";
     setActiveCat(null);
     const items = cartItems();
     if (!items.length) {
@@ -1291,7 +1291,7 @@
 
   /** Показывает порядок покупки и актуальные контакты магазина. */
   function renderOrderGuide() {
-    document.title = "Как заказать — Remophone";
+    document.title = "Как заказать — PartStack";
     setActiveCat(null);
     const telegram = getSocialUrl("telegram");
     app.innerHTML = `
@@ -1335,7 +1335,7 @@
     const message = buildCartMessage(cartItems());
     const telegram = buildTelegramLink(message);
     const telegramLabel = telegram.url ? "@" + new URL(telegram.url).pathname.replace(/^\/|\/$/g, "") : "";
-    document.title = "Оформление через соцсети — Remophone";
+    document.title = "Оформление через соцсети — PartStack";
     setActiveCat(null);
     app.innerHTML = `
       <section class="checkout-page"><div class="container">
@@ -1375,7 +1375,7 @@
   /* ---------- 404 ---------- */
 
   function renderNotFound(message) {
-    document.title = `${message} — Remophone`;
+    document.title = `${message} — PartStack`;
     setActiveCat(null);
     app.innerHTML = `
       <div class="cart-page">
@@ -1455,7 +1455,7 @@
 
   /** Выводит пошаговый подбор по бренду и точной совместимости. */
   function renderModels() {
-    document.title = "Подбор по модели — Remophone";
+    document.title = "Подбор по модели — PartStack";
     setActiveCat(null);
     const brands = [...new Set(PRODUCTS.filter(product => product.category !== "tools").map(product => product.brand))];
     app.innerHTML = `<section class="section"><div class="container"><nav class="crumbs"><a href="#/catalog">Каталог</a><span>/</span><span>Подбор по модели</span></nav><h1>Какая у вас модель?</h1><p class="pagehead__sub">Выберите производителя, затем модель. Покажем только совместимые детали.</p><div class="model-brands">${brands.map(brand => `<button class="btn btn--outline" data-model-brand="${escapeHtml(brand)}" aria-pressed="false">${escapeHtml(brand)}</button>`).join("")}</div><label class="model-search">Найти модель<input type="search" data-model-search placeholder="Например, iPhone 11" aria-label="Найти модель"></label><div class="model-grid" data-model-grid></div></div></section>`;
@@ -1479,7 +1479,7 @@
   /** Показывает товары, сохранённые в избранном. */
   function renderFavorites() {
     const title = "Избранное";
-    document.title = title + " — Remophone";
+    document.title = title + " — PartStack";
     setActiveCat(null);
     const products = favorites.map(id => productById.get(id));
     const content = products.length
