@@ -13,7 +13,7 @@ function loadShop(stored = {}) {
   vm.runInContext(fs.readFileSync('assets/js/data.js','utf8'), context);
   let source = fs.readFileSync('assets/js/app.js','utf8');
   source = source.slice(0, source.indexOf('  /* ---------- Запуск ---------- */'));
-  source += 'window.testShop = {readCart, filterProducts, filtersFromQuery, buildUrl, getSocialUrl, clearLegacyCustomerData, buildCartMessage, buildTelegramLink, getProductDescription};})();';
+  source += 'window.testShop = {readCart, filterProducts, filtersFromQuery, buildUrl, getSocialUrl, clearLegacyCustomerData, buildCartMessage, buildTelegramLink, getProductDescription, reconcileCart, cartItems, refreshCart};})();';
   vm.runInContext(source, context);
   return {shop: context.window.testShop, context};
 }
@@ -95,4 +95,30 @@ test('пустая корзина открывает обычный чат, дл
   const long = shop.buildTelegramLink('Деталь '.repeat(1000));
   assert.equal(long.manual,true);
   assert.equal(long.url,'https://t.me/rznmastershop62');
+});
+
+test('проверка корзины сообщает новую цену, уменьшает количество и убирает скрытые товары', () => {
+  const stored = {z62_cart_v1: JSON.stringify([{id:1,qty:5},{id:2,qty:1}])};
+  const {shop,context} = loadShop(stored);
+  const product = {...context.window.CATALOG_DATA.PRODUCTS[0], price:5000, stock:2};
+  const changes = shop.reconcileCart([product]);
+  assert.equal(changes.length,3);
+  assert.deepEqual(JSON.parse(stored.z62_cart_v1),[{id:1,qty:2}]);
+  const message = shop.buildCartMessage(shop.cartItems());
+  assert.match(message,/Итого: 10\s000 ₽/);
+  assert.match(changes.join(' '),/цена изменилась/);
+  assert.match(changes.join(' '),/больше недоступен/);
+});
+
+test('сбой проверки не удаляет корзину и не разрешает использовать старую цену', async () => {
+  const stored = {z62_cart_v1: JSON.stringify([{id:1,qty:2}])};
+  const {shop,context} = loadShop(stored);
+  context.window.shopFetchProductsByIds = async () => { throw new Error('offline'); };
+  await assert.rejects(shop.refreshCart(),/offline/);
+  assert.deepEqual(JSON.parse(stored.z62_cart_v1),[{id:1,qty:2}]);
+  assert.equal(shop.cartItems()[0].product.price,2490);
+  context.window.shopFetchProductsByIds = async () => [{...context.window.CATALOG_DATA.PRODUCTS[0],price:3000}];
+  const changes = await shop.refreshCart();
+  assert.match(changes.join(' '),/цена изменилась/);
+  assert.equal(shop.cartItems()[0].product.price,3000);
 });

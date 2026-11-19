@@ -109,6 +109,34 @@ def post_receipt(receipt, employee, accept_difference):
 
 
 @transaction.atomic
+def remove_receipt(receipt_id, employee, mode):
+    """Удаляет черновик либо сторнирует проведённую приёмку с записью в историю."""
+    receipt = Receipt.objects.select_for_update().get(pk=receipt_id)
+    if receipt.cancelled_at:
+        raise StockError('Накладная уже отменена.')
+    current_mode = 'cancel' if receipt.posted_at else 'delete'
+    if mode != current_mode:
+        raise StockError('Статус накладной изменился. Проверьте действие и подтвердите его снова.')
+    if current_mode == 'delete':
+        receipt.delete()
+        return 'Черновик накладной удалён.'
+
+    received = dict(StockMovement.objects.filter(receipt=receipt, kind=StockMovement.Kind.RECEIPT)
+                    .order_by().values_list('product_id').annotate(total=Sum('change')))
+    products = list(Product.objects.select_for_update().filter(pk__in=received).order_by('pk'))
+    for product in products:
+        if product.stock < received[product.pk]:
+            raise StockError(f'{product.part} · для отмены нужно {received[product.pk]} шт., в остатке {product.stock} шт.')
+
+    for product in products:
+        record_movement(product, employee, StockMovement.Kind.RECEIPT_CANCEL,
+                        product.stock - received[product.pk], receipt=receipt)
+    receipt.cancelled_at = timezone.now()
+    receipt.save(update_fields=['cancelled_at'])
+    return 'Приход отменён. Остатки обновлены, накладная сохранена в истории.'
+
+
+@transaction.atomic
 def adjust_stock(product_id, employee, kind, quantity, reason, operation_id, previous_balance):
     """Проводит ручное движение один раз, даже при повторной отправке формы."""
     product = Product.objects.select_for_update().get(pk=product_id)

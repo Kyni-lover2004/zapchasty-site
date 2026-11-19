@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 336 160">
+  <style>
+    .letter-p { fill: #0b2b51; }
+    .letter-s { fill: #0870d4; }
+    @media (prefers-color-scheme: dark) {
+      .letter-p { fill: #e8f4ff; }
+      .letter-s { fill: #5db2ff; }
+    }
+  </style>
+  <path class="letter-p" d="M55 4h78c30 0 54 17 54 45 0 34-29 61-65 61H63l-17 46H6l31-80h86c15 0 25-11 25-22 0-10-7-16-20-16H43z"/>
+  <path class="letter-s" d="M325 4H235c-18 0-35 7-46 20 10 15 12 39-1 61 9 7 21 10 36 10h38c9 0 14 4 13 11-1 8-7 14-18 14h-125l-14 34h139c34 0 55-24 57-51 2-24-17-40-44-40h-48c-8 0-12-5-10-11 2-9 10-14 20-14h80z"/>
+</svg>

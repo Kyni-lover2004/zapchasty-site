@@ -2,7 +2,7 @@
 {% load static %}
 {% block extrahead %}{{ block.super }}{% if not receipt.posted_at %}<script src="{% static 'shop/warehouse.js' %}" defer></script>{% endif %}{% endblock %}
 {% block content %}
-<p class="warehouse-meta"><a href="{% url 'warehouse_receipts' %}">← К накладным</a>{% if receipt.supplier %} · {{ receipt.supplier }}{% endif %}{% if receipt.posted_at %} · Проведена {{ receipt.posted_at|date:"d.m.Y H:i" }}{% else %} · В приёмке{% endif %}</p>
+<p class="warehouse-meta"><a href="{% url 'warehouse_receipts' %}">← К накладным</a>{% if receipt.supplier %} · {{ receipt.supplier }}{% endif %}{% if receipt.cancelled_at %} · Отменена {{ receipt.cancelled_at|date:"d.m.Y H:i" }}{% elif receipt.posted_at %} · Проведена {{ receipt.posted_at|date:"d.m.Y H:i" }}{% else %} · В приёмке{% endif %}</p>
 {% if not receipt.posted_at %}
 <div class="warehouse-panels">
   <section class="warehouse-panel">

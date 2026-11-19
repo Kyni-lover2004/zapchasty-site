@@ -19,7 +19,7 @@ from django.views.decorators.http import require_GET, require_http_methods
 from .finance import get_day_entries, get_day_totals, get_month_days
 from .models import Expense, Product, Receipt, ReceiptLine, Sale, StockMovement
 from .stock import (MAX_STOCK, StockError, adjust_stock, apply_receipt_action, apply_sale_action,
-                    find_product, get_refundable_lines, refund_sale)
+                    find_product, get_refundable_lines, refund_sale, remove_receipt)
 
 WAREHOUSE_PERMISSION = 'shop.operate_stock'
 PAYMENT_CHOICES = [('', 'Выберите способ оплаты'), (Sale.Payment.CASH, Sale.Payment.CASH.label),
@@ -168,6 +168,9 @@ def show_receipt(request, pk):
         if form.is_valid():
             try:
                 message = apply_receipt_action(pk, request.user, action, form.cleaned_data)
+            except Receipt.DoesNotExist:
+                messages.info(request, 'Накладная уже удалена.')
+                return redirect('warehouse_receipts')
             except StockError as error:
                 messages.error(request, str(error))
             else:
@@ -184,6 +187,26 @@ def show_receipt(request, pk):
         request, 'receipt', f'Накладная № {receipt.number}', receipt=receipt, lines=lines,
         differs=any(line.expected != line.received for line in lines),
     )
+
+
+@require_http_methods(['GET', 'POST'])
+def confirm_receipt_removal(request, pk):
+    """Показывает предупреждение и меняет накладную только после подтверждения."""
+    receipt = get_object_or_404(Receipt, pk=pk)
+    if receipt.cancelled_at:
+        return redirect('warehouse_receipt', pk=pk)
+    if request.method == 'POST':
+        try:
+            message = remove_receipt(pk, request.user, request.POST.get('mode'))
+        except Receipt.DoesNotExist:
+            messages.info(request, 'Накладная уже удалена.')
+            return redirect('warehouse_receipts')
+        except StockError as error:
+            messages.error(request, str(error))
+            return redirect('warehouse_receipt_remove', pk=pk)
+        messages.success(request, message)
+        return redirect('warehouse_receipts')
+    return render_warehouse(request, 'receipt_remove', f'Накладная № {receipt.number}', receipt=receipt)
 
 
 @require_GET
@@ -404,6 +427,7 @@ def staff_stock_view(view):
 urlpatterns = [
     path('', staff_stock_view(list_receipts), name='warehouse_receipts'),
     path('receipts/<int:pk>/', staff_stock_view(show_receipt), name='warehouse_receipt'),
+    path('receipts/<int:pk>/remove/', staff_stock_view(confirm_receipt_removal), name='warehouse_receipt_remove'),
     path('products/search/', staff_stock_view(suggest_products), name='warehouse_suggest'),
     path('stock/', staff_stock_view(list_stock), name='warehouse_stock'),
     path('stock/<int:pk>/', staff_stock_view(show_product), name='warehouse_product'),

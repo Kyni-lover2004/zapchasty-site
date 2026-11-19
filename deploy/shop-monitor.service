@@ -1,0 +1,16 @@
+[Unit]
+Description=PartStack availability check
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=z62
+Group=www-data
+WorkingDirectory=/srv/z62
+EnvironmentFile=/etc/z62.env
+StateDirectory=z62
+Environment=SHOP_MONITOR_STATE=/var/lib/z62/monitor-state.json
+ExecStart=/srv/z62/.venv/bin/python backend/manage.py check_site
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077

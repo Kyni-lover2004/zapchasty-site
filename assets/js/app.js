@@ -15,7 +15,9 @@
   const categoryById = new Map(CATEGORIES.map((category) => [category.id, category]));
   const productById = new Map(PRODUCTS.map((product) => [product.id, product]));
   const productBySlug = new Map(PRODUCTS.map((product) => [product.slug, product]));
+  let renderVersion = 0;
 
+  const initialCartChanges = [];
   let cart = readCart();
   let toastTimer = null;
   const favorites = readFavorites();
@@ -47,7 +49,76 @@
   function productImage(product) {
     if (product.images?.length) return product.images[0];
     const category = categoryById.get(product.category);
-    return `assets/img/${category ? category.icon : "tool"}.svg`;
+    return `/assets/img/${category ? category.icon : "tool"}.svg`;
+  }
+
+  /** Обновляет кеш только полученных с сервера карточек. */
+  function mergeProducts(products) {
+    for (const product of products) {
+      const previous = productById.get(product.id);
+      const index = PRODUCTS.findIndex(item => item.id === product.id);
+      if (previous) productBySlug.delete(previous.slug);
+      if (index < 0) PRODUCTS.push(product);
+      else PRODUCTS[index] = product;
+      productById.set(product.id, product);
+      productBySlug.set(product.slug, product);
+    }
+  }
+
+  /** Сверяет корзину и сообщает об изменении цены, остатка или публикации. */
+  function reconcileCart(products) {
+    const fresh = new Map(products.map(product => [product.id, product]));
+    const changes = [];
+    cart = cart.flatMap(item => {
+      const previous = productById.get(item.id);
+      const product = fresh.get(item.id);
+      if (!product || product.stock <= 0) {
+        changes.push(`${previous?.name || "Товар"}: больше недоступен, убран из корзины.`);
+        return [];
+      }
+      if (previous && previous.price !== product.price) changes.push(`${product.name}: цена изменилась с ${formatPrice(previous.price)} на ${formatPrice(product.price)}.`);
+      if (item.qty > product.stock) changes.push(`${product.name}: количество уменьшено до ${product.stock} шт.`);
+      return [{id: item.id, qty: Math.min(item.qty, product.stock)}];
+    });
+    mergeProducts(products);
+    saveCart();
+    return changes;
+  }
+
+  /** Проверяет наличие и цену непосредственно перед оформлением. */
+  async function refreshCart(version = renderVersion) {
+    if (!cart.length) return initialCartChanges.splice(0);
+    const snapshot = JSON.stringify(cart);
+    const products = await window.shopFetchProductsByIds(cart.map(item => item.id));
+    if (version !== renderVersion) return null;
+    if (snapshot !== JSON.stringify(cart)) return refreshCart(version);
+    return [...initialCartChanges.splice(0), ...reconcileCart(products)];
+  }
+
+  /** Показывает изменения заметным списком, а не коротким уведомлением. */
+  function showCartChanges(changes) {
+    if (!changes.length) return;
+    const notice = document.createElement('div');
+    notice.className = 'cart-changes';
+    notice.setAttribute('role', 'status');
+    notice.innerHTML = '<h2>Корзина обновлена</h2><ul>' + changes.map(message => `<li>${escapeHtml(message)}</li>`).join('') + '</ul><p>Проверьте состав и сумму перед отправкой сообщения.</p>';
+    app.querySelector('h1')?.after(notice);
+  }
+
+  /** Блокирует оформление до проверки и даёт повторить запрос при сбое. */
+  async function renderVerifiedCart(checkout, version) {
+    app.innerHTML = '<div class="container section" role="status"><h1>Проверяем корзину</h1><p>Уточняем актуальные цены и наличие…</p></div>';
+    try {
+      const changes = await refreshCart(version);
+      if (version !== renderVersion) return;
+      if (checkout) renderCheckout();
+      else renderCart();
+      showCartChanges(changes);
+    } catch (error) {
+      if (version !== renderVersion) return;
+      app.innerHTML = '<div class="container section"><h1>Не удалось проверить корзину</h1><p>Корзина сохранена. Для оформления нужно подтвердить актуальные цены и наличие.</p><button class="btn btn--primary" data-retry-cart>Повторить проверку</button></div>';
+      app.querySelector('[data-retry-cart]').addEventListener('click', render);
+    }
   }
 
   function categoryName(id) {
@@ -61,6 +132,14 @@
     try {
       const stored = JSON.parse(localStorage.getItem(CART_KEY) || "[]");
       if (!Array.isArray(stored)) return [];
+      if (DATA.SERVER_CATALOG) {
+        for (const item of stored) {
+          if (!item || !Number.isSafeInteger(Number(item.id)) || Number(item.qty) < 1) continue;
+          const product = productById.get(Number(item.id));
+          if (!product || product.stock <= 0) initialCartChanges.push(`${product?.name || 'Сохранённый товар'}: больше недоступен, убран из корзины.`);
+          else if (Number(item.qty) > product.stock) initialCartChanges.push(`${product.name}: количество уменьшено до ${product.stock} шт.`);
+        }
+      }
       return stored
         .filter((item) => item && productById.has(Number(item.id)) && Number.isFinite(Number(item.qty)) && Number(item.qty) >= 1 && productById.get(Number(item.id)).stock > 0)
         .map((item) => ({ id: Number(item.id), qty: Math.min(Math.floor(Number(item.qty)), productById.get(Number(item.id)).stock) }));
@@ -170,7 +249,7 @@
   /* ---------- Маршрутизация ---------- */
 
   function getRoute() {
-    const raw = location.hash.startsWith("#") ? location.hash.slice(1) : "/";
+    const raw = location.hash ? location.hash.slice(1) : location.pathname || "/";
     const [pathPart, queryPart] = raw.split("?");
     let path = pathPart || "/";
     if (path.length > 1) path = path.replace(/\/+$/, "");
@@ -178,14 +257,13 @@
   }
 
   function navigate(path) {
-    if (location.hash === "#" + path) {
-      render();
-      return;
-    }
-    location.hash = path;
+    const destination = path.startsWith('/product/') ? path.replace(/\/?$/, '/') : '/#' + path;
+    if (location.pathname + location.hash !== destination) history.pushState(null, '', destination);
+    render();
   }
 
   function render() {
+    const version = ++renderVersion;
     const route = getRoute();
     const path = route.path;
 
@@ -203,16 +281,31 @@
     } else if (path === "/search") {
       renderCatalog(route, true);
     } else if (path.startsWith("/product/")) {
-      const slug = path.slice("/product/".length);
-      const product = productBySlug.get(slug);
-      if (product) renderProduct(product);
-      else renderNotFound("Товар не найден");
+      const slug = decodeURIComponent(path.slice("/product/".length));
+      if (DATA.SERVER_CATALOG) {
+        app.innerHTML = '<div class="container section" role="status">Загружаем карточку товара…</div>';
+        window.shopFetchCatalog({mode: 'product', slug}).then(data => {
+          if (version !== renderVersion) return;
+          mergeProducts(data.PRODUCTS);
+          renderProduct(data.PRODUCTS[0]);
+          syncShoppingControls();
+        }).catch(() => {
+          if (version !== renderVersion) return;
+          renderNotFound('Карточка временно недоступна');
+        });
+      } else {
+        const product = productBySlug.get(slug);
+        if (product) renderProduct(product);
+        else renderNotFound("Товар не найден");
+      }
     } else if (path === "/cart") {
-      renderCart();
+      if (DATA.SERVER_CATALOG) renderVerifiedCart(false, version);
+      else renderCart();
     } else if (path === "/how-to-order") {
       renderOrderGuide();
     } else if (path === "/checkout") {
-      renderCheckout();
+      if (DATA.SERVER_CATALOG) renderVerifiedCart(true, version);
+      else renderCheckout();
     } else if (path === "/orders" || path.startsWith("/order/")) {
       renderCheckout();
     } else {
@@ -260,10 +353,10 @@
     const nav = document.getElementById("catnav");
     if (!nav) return;
     nav.innerHTML =
-      '<a href="#/catalog" data-cat="all">Все запчасти</a>' +
+      '<a href="/#/catalog" data-cat="all">Все запчасти</a>' +
       CATEGORIES.map(
         (category) =>
-          `<a href="#/search?cat=${category.id}" data-cat="${category.id}">${escapeHtml(category.name)}</a>`
+          `<a href="/#/search?cat=${category.id}" data-cat="${category.id}">${escapeHtml(category.name)}</a>`
       ).join("");
   }
 
@@ -271,18 +364,18 @@
     const list = document.getElementById("footer-categories");
     if (!list) return;
     list.innerHTML = CATEGORIES.map(
-      (category) => `<li><a href="#/search?cat=${category.id}">${escapeHtml(category.name)}</a></li>`
+      (category) => `<li><a href="/#/search?cat=${category.id}">${escapeHtml(category.name)}</a></li>`
     ).join("");
   }
 
   function countByCategory(categoryId) {
-    return PRODUCTS.filter((product) => product.category === categoryId).length;
+    return DATA.FACETS?.categories[categoryId] || PRODUCTS.filter((product) => product.category === categoryId).length;
   }
 
   function categoryCard(category) {
     return `
-      <a class="category" href="#/search?cat=${category.id}">
-        <span class="category__icon"><img src="assets/img/${category.icon}.svg" alt="" width="30" height="30" loading="lazy"></span>
+      <a class="category" href="/#/search?cat=${category.id}">
+        <span class="category__icon"><img src="/assets/img/${category.icon}.svg" alt="" width="30" height="30" loading="lazy"></span>
         <span>
           <span class="category__name">${escapeHtml(category.name)}</span>
           <span class="category__count">${countByCategory(category.id)} ${plural(countByCategory(category.id), ["позиция", "позиции", "позиций"])}</span>
@@ -308,14 +401,14 @@
     const stockText = isOut ? "Нет" : `${product.stock} шт.`;
     return `
       <article class="card${isOut ? " card--out" : ""}">
-        <a class="card__media" href="#/product/${product.slug}" aria-label="${escapeHtml(product.name)}">
+        <a class="card__media" href="/product/${encodeURIComponent(product.slug)}/" aria-label="${escapeHtml(product.name)}">
           <img src="${productImage(product)}" alt="" width="200" height="200" loading="lazy">
           <span class="card__badges">${badges.join("")}</span>
         </a>
         <div class="card__body">
           ${renderFavoriteButton(product)}
           <p class="card__meta-top">${escapeHtml(meta)}</p>
-          <h3 class="card__title"><a href="#/product/${product.slug}">${escapeHtml(product.name)}</a></h3>
+          <h3 class="card__title"><a href="/product/${encodeURIComponent(product.slug)}/">${escapeHtml(product.name)}</a></h3>
           <p class="card__sub">${escapeHtml(product.subtitle)}</p>
           <div class="card__info">
             <span>${escapeHtml(product.part)}</span>
@@ -351,7 +444,7 @@
     ];
     const annotations = parts.map(({ x, y, line, category }, index) => `
       <path class="bp-leader" d="${line}"/>
-      <a class="bp-marker" href="#/search?cat=${category}" tabindex="-1">
+      <a class="bp-marker" href="/#/search?cat=${category}" tabindex="-1">
         <circle class="bp-pin" cx="${x}" cy="${y}" r="12"/>
         <text class="bp-number" x="${x}" y="${y + 4}">${index + 1}</text>
       </a>`).join("");
@@ -422,7 +515,7 @@
         <ul class="blueprint__parts" aria-label="Детали на схеме">
           ${parts.map(({ label, category }, index) => `
             <li>
-              <a href="#/search?cat=${category}">
+              <a href="/#/search?cat=${category}">
                 <span aria-hidden="true">${String(index + 1).padStart(2, "0")}</span>${label}
               </a>
             </li>`).join("")}
@@ -443,7 +536,7 @@
           <div>
             <p class="eyebrow">Рязань · запчасти для ремонта</p>
             <h1>Найдите деталь <span class="mark">по модели</span> или артикулу</h1>
-            <p class="hero__lead">Дисплеи, аккумуляторы, шлейфы и инструмент. Подберите совместимую деталь и проверьте остаток перед заказом.</p><a class="model-entry" href="#/models">Подобрать точно по модели ${ICONS.arrow}</a>
+            <p class="hero__lead">Дисплеи, аккумуляторы, шлейфы и инструмент. Подберите совместимую деталь и проверьте остаток перед заказом.</p><a class="model-entry" href="/#/models">Подобрать точно по модели ${ICONS.arrow}</a>
             <form class="finder" data-finder>
               <select name="cat" aria-label="Категория запчастей">
                 <option value="">Все категории</option>
@@ -459,7 +552,7 @@
               <span>Часто ищут</span>
               ${MODELS.map(
                 (model) =>
-                  `<a href="#/search?q=${encodeURIComponent(model)}">${escapeHtml(model)}</a>`
+                  `<a href="/#/search?q=${encodeURIComponent(model)}">${escapeHtml(model)}</a>`
               ).join("")}
             </div>
           </div>
@@ -475,7 +568,7 @@
               <h2>Что нужно отремонтировать?</h2>
               <p>Запчасти, комплектующие для плат и инструмент.</p>
             </div>
-            <a class="section__link" href="#/catalog">Все запчасти ${ICONS.arrow}</a>
+            <a class="section__link" href="/#/catalog">Все запчасти ${ICONS.arrow}</a>
           </div>
           <div class="categories">
             ${CATEGORIES.map(categoryCard).join("")}
@@ -491,7 +584,7 @@
               <h2>В наличии в Рязани</h2>
               <p>Демонстрационный каталог: цены и остатки приведены для примера.</p>
             </div>
-            <a class="section__link" href="#/catalog">Смотреть каталог ${ICONS.arrow}</a>
+            <a class="section__link" href="/#/catalog">Смотреть каталог ${ICONS.arrow}</a>
           </div>
           <div class="product-grid">
             ${featured.map(productCard).join("")}
@@ -524,7 +617,7 @@
             <p class="pickup__address">${escapeHtml(CONTACTS.addressFull)}</p>
             <p>${escapeHtml(CONTACTS.hours)}</p>
             <p>Наличными или картой при получении</p>
-            <p><a href="#/how-to-order">Как заказать</a></p>
+            <p><a href="/#/how-to-order">Как заказать</a></p>
             ${CONTACTS.phoneHref ? `<a href="tel:${escapeHtml(CONTACTS.phoneHref)}">${escapeHtml(CONTACTS.phone)}</a>` : ""}
           </div>
         </div>
@@ -699,7 +792,7 @@
   }
 
   function brandCount(brand) {
-    return PRODUCTS.filter((product) => product.brand === brand).length;
+    return DATA.FACETS?.brands[brand] || PRODUCTS.filter((product) => product.brand === brand).length;
   }
 
   function renderCatalog(route, isSearch) {
@@ -708,7 +801,7 @@
     document.title = `${pageTitle(state, isSearch)} — PartStack`;
     setActiveCat(state.cat.length === 1 ? state.cat[0] : "all");
 
-    const brands = Array.from(new Set(PRODUCTS.map((product) => product.brand))).sort((a, b) =>
+    const brands = (DATA.FACETS ? Object.keys(DATA.FACETS.brands) : Array.from(new Set(PRODUCTS.map((product) => product.brand)))).sort((a, b) =>
       a.localeCompare(b, "ru")
     );
 
@@ -716,8 +809,8 @@
       <section class="pagehead">
         <div class="container pagehead__in">
           <nav class="crumbs" aria-label="Хлебные крошки">
-            <a href="#/">Главная</a><span>/</span>
-            <a href="#/catalog">Каталог</a>
+            <a href="/#/">Главная</a><span>/</span>
+            <a href="/#/catalog">Каталог</a>
             ${isSearch ? '<span>/</span><span>Поиск</span>' : ""}
           </nav>
           <h1 data-page-title>${escapeHtml(pageTitle(state, isSearch))}</h1>
@@ -731,6 +824,7 @@
             <div class="filters__head">
               <h2>Фильтры</h2>
               <button class="filters__reset" type="button" data-reset-filters>Сбросить</button>
+              <button class="filters__close" type="button" data-close-filters>Готово</button>
             </div>
 
             <div class="filters__group">
@@ -775,6 +869,7 @@
                 <button type="submit">Применить</button>
               </form>
             </div>
+            <button class="btn btn--primary btn--wide filters__close" type="button" data-close-filters>Показать товары</button>
           </aside>
 
           <section aria-label="Результаты">
@@ -793,6 +888,7 @@
             </div>
             <div class="results__query" data-query-chips hidden></div>
             <div class="results__grid" data-grid></div>
+            <nav class="catalog-pagination" data-pagination aria-label="Страницы каталога"></nav>
           </section>
         </div>
       </div>`;
@@ -805,19 +901,50 @@
     const chips = app.querySelector("[data-query-chips]");
     const sortSelect = app.querySelector("[data-sort]");
     const filtersToggle = app.querySelector("[data-toggle-filters]");
+    const pagination = app.querySelector('[data-pagination]');
+    let catalogRequest;
 
-    function apply() {
-      const results = filterProducts(state);
+    async function apply(page = 1) {
+      page = Math.max(1, Math.trunc(page) || 1);
+      let results, total;
+      if (DATA.SERVER_CATALOG) {
+        catalogRequest?.abort();
+        const controller = new AbortController();
+        catalogRequest = controller;
+        grid.setAttribute('aria-busy', 'true');
+        grid.innerHTML = '<p role="status">Ищем подходящие запчасти…</p>';
+        pagination.innerHTML = '';
+        try {
+          const parameters = Object.fromEntries(new URLSearchParams(buildUrl('', state).replace(/^\?/, '')));
+          const data = await window.shopFetchCatalog({...parameters, mode: 'search', page}, controller.signal);
+          if (!grid.isConnected || controller.signal.aborted) return;
+          mergeProducts(data.PRODUCTS);
+          results = data.PRODUCTS;
+          total = data.total;
+          page = data.page;
+          pagination.innerHTML = `${data.page > 1 ? '<button type="button" data-page="' + (data.page - 1) + '">← Назад</button>' : ''}<span>Страница ${data.page} из ${data.pages}</span>${data.page < data.pages ? '<button type="button" data-page="' + (data.page + 1) + '">Далее →</button>' : ''}`;
+        } catch (error) {
+          if (controller.signal.aborted || !grid.isConnected) return;
+          grid.innerHTML = '<div class="empty"><h2>Не удалось загрузить товары</h2><button class="btn btn--primary" data-retry-search>Повторить</button></div>';
+          grid.querySelector('[data-retry-search]').addEventListener('click', () => apply(page));
+          return;
+        } finally {
+          if (!controller.signal.aborted) grid.setAttribute('aria-busy', 'false');
+        }
+      } else {
+        results = filterProducts(state);
+        total = results.length;
+      }
       title.textContent = pageTitle(state, isSearch);
       subtitle.textContent = pageSubtitle(state, isSearch);
-      count.innerHTML = `<b>${results.length}</b> ${plural(results.length, ["товар", "товара", "товаров"])}`;
+      count.innerHTML = `<b>${total}</b> ${plural(total, ["товар", "товара", "товаров"])}`;
       grid.innerHTML = results.length
         ? results.map(productCard).join("")
         : `<div class="empty">
             <h2>Ничего не нашли</h2>
-            <p>Попробуйте изменить запрос или открыть весь каталог — в нём ${PRODUCTS.length} позиций.</p>
+            <p>Попробуйте изменить запрос или открыть весь каталог — в нём ${DATA.FACETS?.total || PRODUCTS.length} позиций.</p>
             <div class="empty__actions">
-              <a class="btn btn--primary" href="#/catalog">Открыть весь каталог</a>
+              <a class="btn btn--primary" href="/#/catalog">Открыть весь каталог</a>
               ${CONTACTS.phoneHref ? `<a class="btn btn--outline" href="tel:${escapeHtml(CONTACTS.phoneHref)}">Позвонить</a>` : ""}
             </div>
           </div>`;
@@ -833,10 +960,25 @@
       chips.hidden = !active.length;
       chips.innerHTML = active.map(([key, label, value]) => `<button type="button" data-clear-filter="${key}" data-value="${escapeHtml(value || "")}">${escapeHtml(label)} ×</button>`).join("");
       syncShoppingControls();
-      history.replaceState(null, "", "#" + buildUrl(base, state));
+      const resultUrl = buildUrl(base, state);
+      history.replaceState(null, "", '/#' + resultUrl + (page > 1 ? (resultUrl.includes('?') ? '&' : '?') + 'page=' + page : ''));
       setActiveCat(state.cat.length === 1 ? state.cat[0] : "all");
       document.title = `${pageTitle(state, isSearch)} — PartStack`;
     }
+
+    pagination.addEventListener('click', event => {
+      const button = event.target.closest('[data-page]');
+      if (!button) return;
+      apply(Number(button.dataset.page));
+      app.querySelector('.results__toolbar').scrollIntoView({block: 'start'});
+    });
+    filters.querySelectorAll('[data-close-filters]').forEach(button => button.addEventListener('click', () => {
+      filters.classList.remove('is-open');
+      filtersToggle.setAttribute('aria-expanded', 'false');
+      filtersToggle.textContent = 'Фильтры';
+      filtersToggle.focus();
+      app.querySelector('.results__toolbar').scrollIntoView({block: 'start'});
+    }));
 
     function syncControls() {
       filters.querySelectorAll('input[name="cat"]').forEach((input) => {
@@ -919,7 +1061,7 @@
       syncHeaderSearch(getRoute());
     });
 
-    apply();
+    apply(Number(route.query.get('page')) || 1);
   }
 
   /* ---------- Карточка товара ---------- */
@@ -986,9 +1128,9 @@
       <div class="product${isOut ? " product--out" : ""}">
         <div class="container">
           <nav class="crumbs" aria-label="Хлебные крошки">
-            <a href="#/">Главная</a><span>/</span>
-            <a href="#/catalog">Каталог</a><span>/</span>
-            <a href="#/search?cat=${product.category}">${escapeHtml(category.name)}</a><span>/</span>
+            <a href="/#/">Главная</a><span>/</span>
+            <a href="/#/catalog">Каталог</a><span>/</span>
+            <a href="/#/search?cat=${product.category}">${escapeHtml(category.name)}</a><span>/</span>
             <span>${escapeHtml(product.name)}</span>
           </nav>
 
@@ -1008,7 +1150,7 @@
               <ul class="product__assurance">
                 <li>
                   ${ICONS.check}
-                  <div><b>Гарантия ${escapeHtml(product.warranty)}</b><span><a href="#/how-to-order">Условия покупки и гарантии</a></span></div>
+                  <div><b>Гарантия ${escapeHtml(product.warranty)}</b><span><a href="/#/how-to-order">Условия покупки и гарантии</a></span></div>
                 </li>
                 <li>
                   ${ICONS.pin}
@@ -1131,11 +1273,11 @@
     const product = item.product;
     return `
       <article class="cart-item">
-        <a class="cart-item__media" href="#/product/${product.slug}" aria-label="${escapeHtml(product.name)}">
+        <a class="cart-item__media" href="/product/${encodeURIComponent(product.slug)}/" aria-label="${escapeHtml(product.name)}">
           <img src="${productImage(product)}" alt="" width="92" height="92" loading="lazy">
         </a>
         <div>
-          <h2 class="cart-item__title"><a href="#/product/${product.slug}">${escapeHtml(product.name)}</a></h2>
+          <h2 class="cart-item__title"><a href="/product/${encodeURIComponent(product.slug)}/">${escapeHtml(product.name)}</a></h2>
           <p class="cart-item__meta">${escapeHtml(product.part)} · <span class="stock">${product.stock} шт. на складе</span></p>
         </div>
         <div class="qty">
@@ -1163,9 +1305,9 @@
         <div class="summary__row"><span>Товары (${count})</span><b>${formatPrice(total)}</b></div>
         <div class="summary__row"><span>Доставка</span><b>Самовывоз</b></div>
         <div class="summary__total"><span>Итого</span><b>${formatPrice(total)}</b></div>
-        <a class="btn btn--primary btn--wide" href="#/checkout">Оформить заказ</a>
+        <a class="btn btn--primary btn--wide" href="/#/checkout">Оформить заказ</a>
         <p class="summary__note">Отправьте состав корзины в Telegram. Сотрудник подтвердит наличие, итоговую цену и время самовывоза. Оплата при получении — наличными или картой.</p>
-        <a class="summary__guide" href="#/how-to-order">Как заказать и оплатить</a>
+        <a class="summary__guide" href="/#/how-to-order">Как заказать и оплатить</a>
       </aside>`;
   }
 
@@ -1177,14 +1319,14 @@
       app.innerHTML = `
         <div class="cart-page">
           <div class="container">
-            <nav class="crumbs" aria-label="Хлебные крошки"><a href="#/">Главная</a><span>/</span><span>Корзина</span></nav>
+            <nav class="crumbs" aria-label="Хлебные крошки"><a href="/#/">Главная</a><span>/</span><span>Корзина</span></nav>
             <h1>Корзина</h1>
             <div class="empty">
               <h2>Пока пусто</h2>
               <p>Найдите деталь по модели или артикулу — добавьте её в корзину, чтобы оформить самовывоз в Рязани.</p>
               <div class="empty__actions">
-                <a class="btn btn--primary" href="#/catalog">Открыть каталог</a>
-                <a class="btn btn--outline" href="#/">На главную</a>
+                <a class="btn btn--primary" href="/#/catalog">Открыть каталог</a>
+                <a class="btn btn--outline" href="/#/">На главную</a>
               </div>
             </div>
           </div>
@@ -1195,7 +1337,7 @@
     app.innerHTML = `
       <div class="cart-page">
         <div class="container">
-          <nav class="crumbs" aria-label="Хлебные крошки"><a href="#/">Главная</a><span>/</span><span>Корзина</span></nav>
+          <nav class="crumbs" aria-label="Хлебные крошки"><a href="/#/">Главная</a><span>/</span><span>Корзина</span></nav>
           <h1>Корзина</h1>
           <div class="cart-layout">
             <div class="cart-list">${items.map(cartItemHtml).join("")}</div>
@@ -1296,7 +1438,7 @@
     const telegram = getSocialUrl("telegram");
     app.innerHTML = `
       <section class="checkout-page"><div class="container order-guide">
-        <nav class="crumbs" aria-label="Хлебные крошки"><a href="#/">Главная</a><span>/</span><span>Как заказать</span></nav>
+        <nav class="crumbs" aria-label="Хлебные крошки"><a href="/#/">Главная</a><span>/</span><span>Как заказать</span></nav>
         <h1>Как заказать</h1>
         <div class="order-guide__layout">
           <div class="order-guide__body">
@@ -1339,13 +1481,13 @@
     setActiveCat(null);
     app.innerHTML = `
       <section class="checkout-page"><div class="container">
-        <nav class="crumbs" aria-label="Хлебные крошки"><a href="#/">Главная</a><span>/</span><a href="#/cart">Корзина</a><span>/</span><span>Оформление</span></nav>
+        <nav class="crumbs" aria-label="Хлебные крошки"><a href="/#/">Главная</a><span>/</span><a href="/#/cart">Корзина</a><span>/</span><span>Оформление</span></nav>
         <h1>Оформление заказа</h1>
         <div class="social-checkout">
           <p class="eyebrow">Продолжим в соцсетях</p>
           <h2>Куда вам удобнее написать?</h2>
           <p>Отправьте сообщение с товарами. Сотрудник подтвердит наличие и цену, согласует самовывоз и способ оплаты.</p>
-          <a class="summary__guide" href="#/how-to-order">Оплата, самовывоз и гарантия</a>
+          <a class="summary__guide" href="/#/how-to-order">Оплата, самовывоз и гарантия</a>
           <div class="social-checkout__links">
             ${[["telegram", "Telegram"], ["vk", "ВКонтакте"]].map(([key, label]) => {
               const url = key === "telegram" ? telegram.url : getSocialUrl(key);
@@ -1355,11 +1497,48 @@
           </div>
           ${message ? `<div class="checkout-message"><p>${!telegram.url ? "Скопируйте список товаров и вставьте его в переписку с магазином." : telegram.manual ? "Большой заказ: скопируйте список ниже и вставьте его в чат Telegram." : "В Telegram откроется сообщение с товарами из корзины. Проверьте его и нажмите «Отправить». Если текст не подставился, скопируйте его ниже."}</p><button class="btn btn--outline" type="button" data-copy-cart>Скопировать состав заказа</button><details><summary>Посмотреть текст сообщения</summary><pre data-order-preview>${escapeHtml(message)}</pre></details></div>` : '<p class="social-checkout__note-empty">Корзина пуста. Можно написать нам с вопросом или сначала выбрать товары в каталоге.</p>'}
           <p class="social-checkout__note">Контакты для оформления пока готовим. Как только сообщества появятся, здесь будут ссылки для связи.</p>
-          <a class="model-entry" href="#/cart">← Вернуться в корзину</a>
+          <a class="model-entry" href="/#/cart">← Вернуться в корзину</a>
         </div>
       </div></section>`;
-    app.querySelector("[data-copy-cart]")?.addEventListener("click", () => copyCartMessage(message));
+    /** Проверяет также уже показанную сумму, если кеш обновился в другой части страницы. */
+    async function runCheckoutAction(action) {
+      const version = renderVersion;
+      try {
+        const changes = DATA.SERVER_CATALOG ? await refreshCart(version) : [];
+        if (version !== renderVersion || changes === null) return;
+        const freshMessage = buildCartMessage(cartItems());
+        if (changes.length || freshMessage !== message) {
+          renderCheckout();
+          showCartChanges(changes.length ? changes : ['Состав или стоимость корзины обновились. Проверьте итоговую сумму.']);
+          return;
+        }
+        await action(freshMessage);
+      } catch (error) {
+        if (version === renderVersion) showToast('Не удалось проверить корзину. Проверьте связь и повторите отправку.');
+      }
+    }
+    app.querySelector('[data-copy-cart]')?.addEventListener('click', async event => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      try { await runCheckoutAction(copyCartMessage); }
+      finally { button.disabled = false; }
+    });
     app.querySelector(".social-checkout__note").hidden = Boolean(getSocialUrl("vk") || getSocialUrl("telegram"));
+    if (DATA.SERVER_CATALOG) {
+      app.querySelectorAll('a.social-contact').forEach(link => link.addEventListener('click', async event => {
+        event.preventDefault();
+        if (link.getAttribute('aria-disabled') === 'true') return;
+        link.setAttribute('aria-disabled', 'true');
+        try {
+          await runCheckoutAction(freshMessage => {
+            const url = link.href.includes('t.me/') ? buildTelegramLink(freshMessage).url : getSocialUrl('vk');
+            if (url) location.assign(url);
+          });
+        } finally {
+          link.removeAttribute('aria-disabled');
+        }
+      }));
+    }
   }
 
   /** Удаляет контакты и историю, сохранённые прежней формой оформления. */
@@ -1380,13 +1559,13 @@
     app.innerHTML = `
       <div class="cart-page">
         <div class="container">
-          <nav class="crumbs" aria-label="Хлебные крошки"><a href="#/">Главная</a><span>/</span><span>${escapeHtml(message)}</span></nav>
+          <nav class="crumbs" aria-label="Хлебные крошки"><a href="/#/">Главная</a><span>/</span><span>${escapeHtml(message)}</span></nav>
           <div class="empty" style="margin-top: 24px;">
             <h2>${escapeHtml(message)}</h2>
             <p>Проверьте адрес или вернитесь в каталог — там все запчасти с наличием в Рязани.</p>
             <div class="empty__actions">
-              <a class="btn btn--primary" href="#/catalog">Открыть каталог</a>
-              <a class="btn btn--outline" href="#/">На главную</a>
+              <a class="btn btn--primary" href="/#/catalog">Открыть каталог</a>
+              <a class="btn btn--outline" href="/#/">На главную</a>
             </div>
           </div>
         </div>
@@ -1416,6 +1595,12 @@
       event.preventDefault();
       showToast("Сообщество магазина скоро появится.");
     }
+    const internal = event.target.closest('a[href^="#/"], a[href^="/#/"], a[href^="/product/"]');
+    if (internal && !event.defaultPrevented && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && event.button === 0) {
+      event.preventDefault();
+      const href = internal.getAttribute('href');
+      navigate(href.startsWith('/#') ? href.slice(2) : href.startsWith('#') ? href.slice(1) : href);
+    }
   });
 
   /** Читает избранное, отбрасывая неизвестные товары. */
@@ -1429,7 +1614,7 @@
   /** Создаёт переключатель избранного для товара. */
   function renderFavoriteButton(product) {
     return `<div class="save-actions">
-      <button type="button" data-favorite="${product.id}" aria-pressed="${favorites.includes(product.id)}">
+      <button type="button" data-favorite="${product.id}" aria-label="${escapeHtml('Избранное: ' + product.name)}" aria-pressed="${favorites.includes(product.id)}">
         <svg class="favorite-heart" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.2 4.4 13a4.7 4.7 0 0 1 6.6-6.7l1 1 1-1a4.7 4.7 0 0 1 6.6 6.7Z"/></svg>
         Избранное
       </button>
@@ -1457,22 +1642,45 @@
   function renderModels() {
     document.title = "Подбор по модели — PartStack";
     setActiveCat(null);
-    const brands = [...new Set(PRODUCTS.filter(product => product.category !== "tools").map(product => product.brand))];
-    app.innerHTML = `<section class="section"><div class="container"><nav class="crumbs"><a href="#/catalog">Каталог</a><span>/</span><span>Подбор по модели</span></nav><h1>Какая у вас модель?</h1><p class="pagehead__sub">Выберите производителя, затем модель. Покажем только совместимые детали.</p><div class="model-brands">${brands.map(brand => `<button class="btn btn--outline" data-model-brand="${escapeHtml(brand)}" aria-pressed="false">${escapeHtml(brand)}</button>`).join("")}</div><label class="model-search">Найти модель<input type="search" data-model-search placeholder="Например, iPhone 11" aria-label="Найти модель"></label><div class="model-grid" data-model-grid></div></div></section>`;
+    const brands = DATA.FACETS?.modelBrands || [...new Set(PRODUCTS.filter(product => product.category !== "tools").map(product => product.brand))];
+    app.innerHTML = `<section class="section"><div class="container"><nav class="crumbs"><a href="/#/catalog">Каталог</a><span>/</span><span>Подбор по модели</span></nav><h1>Какая у вас модель?</h1><p class="pagehead__sub">Выберите производителя, затем модель. Покажем только совместимые детали.</p><div class="model-brands">${brands.map(brand => `<button class="btn btn--outline" data-model-brand="${escapeHtml(brand)}" aria-pressed="false">${escapeHtml(brand)}</button>`).join("")}</div><label class="model-search">Найти модель<input type="search" data-model-search placeholder="Например, iPhone 11" aria-label="Найти модель"></label><div class="model-grid" data-model-grid></div></div></section>`;
     let selectedBrand = "";
     const input = app.querySelector("[data-model-search]");
     /** Перестраивает список моделей по выбранному бренду и тексту. */
-    function updateModels() {
+    let modelRequest;
+    let modelTimer;
+    async function updateModels(page = 1) {
+      const grid = app.querySelector('[data-model-grid]');
+      if (DATA.SERVER_CATALOG) {
+        modelRequest?.abort();
+        const controller = new AbortController();
+        modelRequest = controller;
+        grid.innerHTML = '<p role="status">Загружаем модели…</p>';
+        try {
+          const data = await window.shopFetchCatalog({mode: 'models', brand: selectedBrand, q: input.value.trim(), page}, controller.signal);
+          if (!grid.isConnected || controller.signal.aborted) return;
+          grid.innerHTML = data.models.length ? data.models.map(model => `<a class="model-tile" href="/#/catalog?model=${encodeURIComponent(model.name)}"><b>${escapeHtml(model.name)}</b><span>${model.count} ${plural(model.count, ['позиция', 'позиции', 'позиций'])} ${ICONS.arrow}</span></a>`).join('') : '<p>Модель не найдена. Попробуйте другой запрос.</p>';
+          if (data.pages > 1) {
+            grid.insertAdjacentHTML('beforeend', `<nav class="catalog-pagination" aria-label="Страницы моделей">${data.page > 1 ? '<button data-model-page="' + (data.page - 1) + '">← Назад</button>' : ''}<span>${data.page} из ${data.pages}</span>${data.page < data.pages ? '<button data-model-page="' + (data.page + 1) + '">Далее →</button>' : ''}</nav>`);
+            grid.querySelectorAll('[data-model-page]').forEach(button => button.addEventListener('click', () => updateModels(Number(button.dataset.modelPage))));
+          }
+        } catch (error) {
+          if (!grid.isConnected || controller.signal.aborted) return;
+          grid.innerHTML = '<p>Не удалось загрузить модели.</p><button class="btn btn--outline" data-model-retry>Повторить</button>';
+          grid.querySelector('[data-model-retry]').addEventListener('click', () => updateModels(page));
+        }
+        return;
+      }
       const products = PRODUCTS.filter(product => product.category !== "tools" && (!selectedBrand || product.brand === selectedBrand));
       const models = [...new Set(products.flatMap(product => product.compat))].filter(model => normalize(model).includes(normalize(input.value))).sort((left, right) => left.localeCompare(right, "ru", {numeric: true}));
-      app.querySelector("[data-model-grid]").innerHTML = models.length ? models.map(model => `<a class="model-tile" href="#/catalog?model=${encodeURIComponent(model)}"><b>${escapeHtml(model)}</b><span>${PRODUCTS.filter(product => product.compat.includes(model)).length} позиций ${ICONS.arrow}</span></a>`).join("") : '<p>Модель не найдена. Измените запрос или выберите другой бренд.</p>';
+      app.querySelector("[data-model-grid]").innerHTML = models.length ? models.map(model => `<a class="model-tile" href="/#/catalog?model=${encodeURIComponent(model)}"><b>${escapeHtml(model)}</b><span>${PRODUCTS.filter(product => product.compat.includes(model)).length} позиций ${ICONS.arrow}</span></a>`).join("") : '<p>Модель не найдена. Измените запрос или выберите другой бренд.</p>';
     }
     app.querySelectorAll("[data-model-brand]").forEach(button => button.addEventListener("click", () => {
       selectedBrand = selectedBrand === button.dataset.modelBrand ? "" : button.dataset.modelBrand;
       app.querySelectorAll("[data-model-brand]").forEach(node => node.setAttribute("aria-pressed", String(node.dataset.modelBrand === selectedBrand)));
       updateModels();
     }));
-    input.addEventListener("input", updateModels);
+    input.addEventListener("input", () => { clearTimeout(modelTimer); modelTimer = setTimeout(() => updateModels(), 200); });
     updateModels();
   }
 
@@ -1484,8 +1692,8 @@
     const products = favorites.map(id => productById.get(id));
     const content = products.length
       ? `<div class="product-grid">${products.map(productCard).join("")}</div>`
-      : '<div class="empty"><h2>Сохраните нужные детали</h2><p>Нажмите «Избранное» на карточке товара. Подборка останется после перезагрузки.</p><a class="btn btn--primary" href="#/catalog">Открыть каталог</a></div>';
-    app.innerHTML = `<section class="section"><div class="container"><nav class="crumbs"><a href="#/">Главная</a><span>/</span><span>${title}</span></nav><div class="section__head"><h1>${title}</h1><a href="#/catalog">Продолжить покупки →</a></div>${content}</div></section>`;
+      : '<div class="empty"><h2>Сохраните нужные детали</h2><p>Нажмите «Избранное» на карточке товара. Подборка останется после перезагрузки.</p><a class="btn btn--primary" href="/#/catalog">Открыть каталог</a></div>';
+    app.innerHTML = `<section class="section"><div class="container"><nav class="crumbs"><a href="/#/">Главная</a><span>/</span><span>${title}</span></nav><div class="section__head"><h1>${title}</h1><a href="/#/catalog">Продолжить покупки →</a></div>${content}</div></section>`;
   }
 
   /** Подключает подсказки поиска с клавиатурной навигацией и закрытием. */
@@ -1499,27 +1707,53 @@
     panel.hidden = true;
     form.append(panel);
     input.setAttribute("aria-controls", panel.id);
+    let suggestionRequest;
+    let suggestionTimer;
     /** Обновляет подсказки по тем же правилам, что основной поиск. */
-    function updateSuggestions() {
+    async function updateSuggestions() {
       const query = input.value.trim();
-      const matches = query ? filterProducts(filtersFromQuery(new URLSearchParams({q:query}))).slice(0,5) : [];
+      suggestionRequest?.abort();
+      let matches = query ? filterProducts(filtersFromQuery(new URLSearchParams({q:query}))).slice(0,5) : [];
+      if (DATA.SERVER_CATALOG && query) {
+        const controller = new AbortController();
+        suggestionRequest = controller;
+        try {
+          const data = await window.shopFetchCatalog({mode: 'search', q: query}, controller.signal);
+          if (controller.signal.aborted || query !== input.value.trim() || !form.contains(document.activeElement)) return;
+          matches = data.PRODUCTS.slice(0, 5);
+          mergeProducts(matches);
+        } catch (error) {
+          if (!controller.signal.aborted) { panel.hidden = true; input.setAttribute('aria-expanded', 'false'); }
+          return;
+        }
+      }
       panel.hidden = !query;
       input.setAttribute("aria-expanded", String(Boolean(query)));
-      panel.innerHTML = matches.map(product => `<a href="#/product/${product.slug}"><img src="${productImage(product)}" width="36" height="36" alt=""><span>${escapeHtml(product.name)}<small>${escapeHtml(product.subtitle)} · ${escapeHtml(product.part)}</small></span><b>${formatPrice(product.price)}</b></a>`).join("") + `<a class="search-all" href="#/search?q=${encodeURIComponent(query)}">${matches.length ? "Все результаты" : "Нет совпадений — изменить поиск"} ${ICONS.arrow}</a>`;
+      panel.innerHTML = matches.map(product => `<a href="/product/${encodeURIComponent(product.slug)}/"><img src="${productImage(product)}" width="36" height="36" alt=""><span>${escapeHtml(product.name)}<small>${escapeHtml(product.subtitle)} · ${escapeHtml(product.part)}</small></span><b>${formatPrice(product.price)}</b></a>`).join("") + `<a class="search-all" href="/#/search?q=${encodeURIComponent(query)}">${matches.length ? "Все результаты" : "Нет совпадений — изменить поиск"} ${ICONS.arrow}</a>`;
     }
-    input.addEventListener("input", updateSuggestions);
+    input.addEventListener("input", () => { clearTimeout(suggestionTimer); suggestionRequest?.abort(); suggestionTimer = setTimeout(updateSuggestions, 200); });
     input.addEventListener("focus", updateSuggestions);
     form.addEventListener("keydown", event => {
-      if (event.key === "Escape") { panel.hidden = true; input.setAttribute("aria-expanded", "false"); input.focus(); panel.hidden = true; }
+      if (event.key === "Escape") { input.focus(); suggestionRequest?.abort(); clearTimeout(suggestionTimer); panel.hidden = true; input.setAttribute("aria-expanded", "false"); }
       if ((event.key === "ArrowDown" || event.key === "ArrowUp") && !panel.hidden) {
         event.preventDefault();
         const links = [...panel.querySelectorAll("a")];
         const index = links.indexOf(document.activeElement);
-        links[(index + (event.key === "ArrowDown" ? 1 : -1) + links.length) % links.length].focus();
+        const step = event.key === 'ArrowDown' ? 1 : -1;
+        const next = index < 0 ? (step > 0 ? 0 : links.length - 1) : (index + step + links.length) % links.length;
+        links[next]?.focus();
       }
     });
-    document.addEventListener("click", event => { if (!form.contains(event.target)) { panel.hidden = true; input.setAttribute("aria-expanded", "false"); } });
-    form.addEventListener("focusout", event => { if (!form.contains(event.relatedTarget)) panel.hidden = true; });
+    /** Закрывает подсказки и отменяет запросы, которые могли бы открыть их заново. */
+    function closeSuggestions() {
+      suggestionRequest?.abort();
+      clearTimeout(suggestionTimer);
+      panel.hidden = true;
+      input.setAttribute('aria-expanded', 'false');
+    }
+    document.addEventListener('click', event => { if (!form.contains(event.target)) closeSuggestions(); });
+    form.addEventListener('focusout', event => { if (!form.contains(event.relatedTarget)) closeSuggestions(); });
+    form.addEventListener('submit', () => { closeSuggestions(); input.blur(); });
   }
 
   document.addEventListener("click", event => {
@@ -1565,5 +1799,7 @@
   renderFooterCategories();
   updateCartBadge();
   window.addEventListener("hashchange", render);
+  window.addEventListener("popstate", render);
   render();
+  window.SHOP_READY = true;
 })();

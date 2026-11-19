@@ -12,6 +12,13 @@ from django.core.validators import MinValueValidator, RegexValidator
 from django.db import models
 
 
+class LoginAttemptWindow(models.Model):
+    """Общий лимит входа; хранит хеш адреса без логина и пароля."""
+    key = models.CharField(max_length=64, primary_key=True)
+    attempts = models.PositiveIntegerField(default=0)
+    expires_at = models.DateTimeField(db_index=True)
+
+
 def validate_photo(file):
     """Проверяет размер и содержимое фотографии до сохранения."""
     if file.size > 15 * 1024 * 1024:
@@ -98,6 +105,7 @@ class Receipt(models.Model):
     supplier = models.CharField('Поставщик', max_length=160, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     posted_at = models.DateTimeField(null=True, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
 
 
 class ReceiptLine(models.Model):
@@ -192,6 +200,7 @@ class Expense(models.Model):
 class StockMovement(models.Model):
     class Kind(models.TextChoices):
         RECEIPT = 'receipt', 'Приход'
+        RECEIPT_CANCEL = 'receipt_cancel', 'Отмена прихода'
         ISSUE = 'issue', 'Выдача'
         WRITE_OFF = 'write_off', 'Списание'
         COUNT = 'count', 'Пересчёт'
@@ -202,7 +211,7 @@ class StockMovement(models.Model):
     sale = models.ForeignKey(Sale, related_name='movements', null=True, blank=True, on_delete=models.PROTECT)
     employee = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
     employee_name = models.CharField(max_length=150)
-    kind = models.CharField(max_length=12, choices=Kind.choices)
+    kind = models.CharField(max_length=14, choices=Kind.choices)
     change = models.IntegerField()
     balance = models.PositiveIntegerField()
     reason = models.CharField(max_length=250, blank=True)

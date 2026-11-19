@@ -6,3 +6,8 @@ staticfiles/
 __pycache__/
 *.pyc
 .env
+.env.*
+.DS_Store
+.codegraph
+.omo/
+/preview-*.png

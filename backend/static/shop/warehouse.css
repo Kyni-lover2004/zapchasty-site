@@ -308,3 +308,12 @@
 .warehouse-receipt-items li + li { border-top: 1px solid var(--hairline-color); }
 .warehouse-receipt-items small { display: block; color: var(--body-quiet-color); }
 .warehouse-receipt-items li div { display: flex; justify-content: space-between; gap: 8px; margin-top: 4px; }
+
+.warehouse-receipt-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.warehouse a.warehouse-danger { color: var(--error-fg); }
+.warehouse button.warehouse-danger {
+  padding: 7px 12px;
+  border-color: var(--delete-button-bg);
+  background: var(--delete-button-bg);
+  color: var(--button-fg);
+}

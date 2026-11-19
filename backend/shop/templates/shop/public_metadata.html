@@ -1,0 +1,10 @@
+<meta name="description" content="{{ description }}">
+<link rel="canonical" href="{{ canonical }}">
+<meta property="og:type" content="{% if product %}product{% else %}website{% endif %}">
+<meta property="og:site_name" content="PartStack">
+<meta property="og:title" content="{{ title }}">
+<meta property="og:description" content="{{ description }}">
+<meta property="og:url" content="{{ canonical }}">
+<meta property="og:image" content="{{ image_url }}">
+<meta name="twitter:card" content="summary_large_image">
+{% if product %}<meta property="product:price:amount" content="{{ product.price }}"><meta property="product:price:currency" content="RUB">{% endif %}

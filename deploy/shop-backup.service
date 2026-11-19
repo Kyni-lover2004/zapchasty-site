@@ -1,0 +1,14 @@
+[Unit]
+Description=PartStack database and media backup
+After=postgresql.service
+
+[Service]
+Type=oneshot
+User=z62
+Group=www-data
+WorkingDirectory=/srv/z62
+EnvironmentFile=/etc/z62.env
+ExecStart=/bin/sh /srv/z62/deploy/backup.sh
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077

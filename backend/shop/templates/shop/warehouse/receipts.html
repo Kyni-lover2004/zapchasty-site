@@ -19,8 +19,13 @@
           <th scope="row"><a href="{% url 'warehouse_receipt' receipt.pk %}">{{ receipt.number }}</a></th>
           <td>{{ receipt.supplier|default:"—" }}</td>
           <td>{{ receipt.created_at|date:"d.m.Y H:i" }}</td>
-          <td><span class="warehouse-status{% if receipt.posted_at %} is-posted{% endif %}">{% if receipt.posted_at %}Проведена{% else %}В приёмке{% endif %}</span></td>
-          <td><a class="warehouse-open" href="{% url 'warehouse_receipt' receipt.pk %}" aria-label="Открыть накладную № {{ receipt.number }} от {{ receipt.created_at|date:'d.m.Y H:i' }}">Открыть</a></td>
+          <td><span class="warehouse-status{% if receipt.posted_at %} is-posted{% endif %}">{% if receipt.cancelled_at %}Отменена{% elif receipt.posted_at %}Проведена{% else %}В приёмке{% endif %}</span></td>
+          <td><div class="warehouse-receipt-actions">
+            <a class="warehouse-open" href="{% url 'warehouse_receipt' receipt.pk %}" aria-label="Открыть накладную № {{ receipt.number }} от {{ receipt.created_at|date:'d.m.Y H:i' }}">Открыть</a>
+            {% if not receipt.cancelled_at %}
+              <a class="warehouse-open warehouse-danger" href="{% url 'warehouse_receipt_remove' receipt.pk %}">{% if receipt.posted_at %}Отменить приход{% else %}Удалить{% endif %}</a>
+            {% endif %}
+          </div></td>
         </tr>
         {% empty %}<tr><td colspan="5">Накладных пока нет.</td></tr>{% endfor %}
       </tbody>

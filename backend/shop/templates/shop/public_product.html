@@ -1,0 +1,8 @@
+<article class="container section public-fallback" data-public-fallback>
+  <nav class="crumbs"><a href="/">На главную</a></nav>
+  <h1>{{ product.name }}</h1>
+  <p>{{ product.subtitle }}</p><p>Артикул: {{ product.part }}</p>
+  {% if product.photos.first %}<img src="{{ product.photos.first.image.url }}" alt="{{ product.name }}" width="320" height="320" style="object-fit:contain;max-width:100%">{% endif %}
+  <p>{{ product.description|linebreaksbr }}</p><p>{{ product.price }} ₽ · {% if product.stock %}В наличии: {{ product.stock }} шт.{% else %}Нет в наличии{% endif %}</p>
+  <p>Самовывоз в Рязани. Для оформления включите JavaScript.</p>
+</article>

@@ -9,9 +9,19 @@ ALLOWED_HOSTS = os.environ.get('SHOP_HOSTS', 'localhost,127.0.0.1,testserver').s
 CSRF_TRUSTED_ORIGINS = list(filter(None, os.environ.get('SHOP_ORIGINS', '').split(',')))
 INSTALLED_APPS = ['django.contrib.admin', 'django.contrib.auth', 'django.contrib.contenttypes', 'django.contrib.sessions', 'django.contrib.messages', 'django.contrib.staticfiles', 'shop.apps.ShopConfig']
 MIDDLEWARE = ['django.middleware.security.SecurityMiddleware', 'django.contrib.sessions.middleware.SessionMiddleware', 'django.middleware.common.CommonMiddleware', 'django.middleware.csrf.CsrfViewMiddleware', 'django.contrib.auth.middleware.AuthenticationMiddleware', 'django.contrib.messages.middleware.MessageMiddleware', 'django.middleware.clickjacking.XFrameOptionsMiddleware']
-if os.environ.get('SHOP_LOCAL_ADMIN_ONLY') == '1':
-    MIDDLEWARE.insert(0, 'shop.middleware.restrict_local_staff')
+MIDDLEWARE.insert(0, 'shop.middleware.restrict_local_staff')
+MIDDLEWARE.insert(1, 'shop.middleware.limit_staff_login')
 SHOP_STAFF_NETWORKS = os.environ.get('SHOP_STAFF_NETWORKS', '').split(',')
+SHOP_BEHIND_PROXY = os.environ.get('SHOP_BEHIND_PROXY', '0' if DEBUG else '1') == '1'
+SHOP_TRUSTED_PROXY_NETWORKS = os.environ.get('SHOP_TRUSTED_PROXY_NETWORKS', '127.0.0.1/32,::1/128').split(',')
+SHOP_LOGIN_LIMIT = 5
+SHOP_LOGIN_WINDOW_SECONDS = 300
+SHOP_PUBLIC_URL = os.environ.get('SHOP_PUBLIC_URL', '')
+SHOP_MONITOR_URL = os.environ.get('SHOP_MONITOR_URL', 'http://127.0.0.1:8000/health/')
+SHOP_MONITOR_STATE = os.environ.get('SHOP_MONITOR_STATE', str(BASE_DIR / '.local/monitor-state.json'))
+SHOP_ALERTS_ENABLED = os.environ.get('SHOP_ALERTS_ENABLED', '0') == '1'
+SHOP_TELEGRAM_TOKEN = os.environ.get('SHOP_TELEGRAM_TOKEN', '')
+SHOP_TELEGRAM_CHAT_ID = os.environ.get('SHOP_TELEGRAM_CHAT_ID', '')
 ROOT_URLCONF = 'config.urls'
 WSGI_APPLICATION = 'config.wsgi.application'
 TEMPLATES = [{'BACKEND': 'django.template.backends.django.DjangoTemplates', 'DIRS': [BASE_DIR / 'backend/templates'], 'APP_DIRS': True, 'OPTIONS': {'context_processors': ['django.template.context_processors.request', 'django.contrib.auth.context_processors.auth', 'django.contrib.messages.context_processors.messages']}}]
@@ -34,9 +44,17 @@ SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 SECURE_SSL_REDIRECT = not DEBUG
-SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https') if SHOP_BEHIND_PROXY else None
+SECURE_HSTS_SECONDS = 0 if DEBUG else 3600
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'
 DATA_UPLOAD_MAX_MEMORY_SIZE = 2 * 1024 * 1024
 FILE_UPLOAD_MAX_MEMORY_SIZE = 2 * 1024 * 1024
 DATA_UPLOAD_MAX_NUMBER_FILES = 20
+LOGGING = {
+    'version': 1, 'disable_existing_loggers': False,
+    'formatters': {'standard': {'format': '{asctime} {levelname} {name}: {message}', 'style': '{'}},
+    'handlers': {'console': {'class': 'logging.StreamHandler', 'formatter': 'standard'}},
+    'loggers': {'django': {'handlers': ['console'], 'level': 'INFO', 'propagate': False},
+                'shop': {'handlers': ['console'], 'level': 'INFO', 'propagate': False}},
+}

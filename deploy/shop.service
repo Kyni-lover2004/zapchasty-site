@@ -7,6 +7,9 @@ User=z62
 Group=www-data
 WorkingDirectory=/srv/z62/backend
 EnvironmentFile=/etc/z62.env
+Environment=PYTHONUNBUFFERED=1
+StandardOutput=journal
+StandardError=journal
 ExecStart=/srv/z62/.venv/bin/gunicorn config.wsgi:application --bind 127.0.0.1:8000 --workers 3 --timeout 60
 Restart=on-failure
 UMask=0027

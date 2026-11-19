@@ -1,0 +1,20 @@
+{% extends "shop/warehouse/base.html" %}
+{% block content %}
+<section class="warehouse-panel">
+  {% if receipt.posted_at %}
+    <h2>Отменить приход?</h2>
+    <p>Принятое по этой накладной количество будет вычтено из остатков. Накладная и запись об отмене останутся в истории.</p>
+    <p class="warehouse-hint">Если товара в остатке меньше, чем было принято, приёмку отменить нельзя.</p>
+  {% else %}
+    <h2>Удалить черновик накладной?</h2>
+    <p>Черновик и все внесённые позиции будут удалены. Восстановить их нельзя. Остатки товаров не изменятся.</p>
+  {% endif %}
+  <p class="warehouse-hint">{{ receipt.supplier|default:"Поставщик не указан" }} · {{ receipt.created_at|date:"d.m.Y H:i" }}</p>
+  <form method="post" class="warehouse-form">
+    {% csrf_token %}
+    <input type="hidden" name="mode" value="{% if receipt.posted_at %}cancel{% else %}delete{% endif %}">
+    <button type="submit" class="warehouse-danger">{% if receipt.posted_at %}Отменить приход{% else %}Удалить накладную{% endif %}</button>
+    <a class="warehouse-open" href="{% url 'warehouse_receipts' %}">Вернуться к списку</a>
+  </form>
+</section>
+{% endblock %}

@@ -10,7 +10,7 @@ from django.contrib.auth.models import Permission, User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.exceptions import ValidationError
 from django.utils import timezone
-from .models import Category, Expense, Product, Photo, Sale, SaleLine, SaleRefund, validate_photo
+from .models import Category, Expense, Product, Photo, Receipt, Sale, SaleLine, SaleRefund, validate_photo
 
 class CatalogTests(TestCase):
     def setUp(self):
@@ -169,6 +169,35 @@ class WarehouseTests(TestCase):
         self.assertEqual(self.client.get('/api/catalog/').json()['PRODUCTS'][0]['stock'], 4)
         self.assertEqual(self.product.stockmovement_set.count(), 1)
         self.assertEqual(self.other.stockmovement_set.count(), 0)
+
+        remove_url = url + 'remove/'
+        self.assertContains(self.client.get(remove_url), 'Отменить приход?')
+        self.client.post(remove_url, {'mode': 'delete'})
+        self.assertEqual(self.client.get('/api/catalog/').json()['PRODUCTS'][0]['stock'], 4)
+        Product.objects.filter(pk=self.product.pk).update(stock=1)
+        response = self.client.post(remove_url, {'mode': 'cancel'}, follow=True)
+        self.assertContains(response, 'в остатке 1 шт.')
+        self.assertIsNone(Receipt.objects.get().cancelled_at)
+
+        Product.objects.filter(pk=self.product.pk).update(stock=4)
+        self.assertRedirects(self.client.post(remove_url, {'mode': 'cancel'}), '/warehouse/')
+        self.client.post(remove_url, {'mode': 'cancel'})
+        self.assertEqual(self.client.get('/api/catalog/').json()['PRODUCTS'][0]['stock'], 2)
+        self.assertIsNotNone(Receipt.objects.get().cancelled_at)
+        self.assertEqual(self.product.stockmovement_set.first().change, -2)
+        self.assertEqual(self.product.stockmovement_set.count(), 2)
+
+    def test_receipt_draft_requires_confirmation_before_deleting(self):
+        """Удаление черновика удаляет строки и не меняет остатки."""
+        url = self.client.post('/warehouse/', {'number': 'Черновик'})['Location']
+        self.client.post(url, {'action': 'add', 'code': self.product.part, 'quantity': 2})
+        remove_url = url + 'remove/'
+        self.assertContains(self.client.get(remove_url), 'Удалить черновик накладной?')
+        self.assertTrue(Receipt.objects.exists())
+        self.assertRedirects(self.client.post(remove_url, {'mode': 'delete'}), '/warehouse/')
+        self.assertFalse(Receipt.objects.exists())
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock, 2)
 
     def test_staff_without_warehouse_permission_cannot_operate(self):
         """Статуса сотрудника самого по себе для складских данных мало."""
